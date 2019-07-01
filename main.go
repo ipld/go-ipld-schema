@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strings"
 )
 
 type TypeStruct struct {
@@ -95,9 +96,22 @@ func tokens(l string) []string {
 	var out []string
 	curStart := -1
 
+	var quoted bool
 loop:
 	for i := 0; i < len(l); i++ {
+		if quoted && l[i] != '"' {
+			continue
+		}
+
 		switch l[i] {
+		case '"':
+			if !quoted {
+				quoted = true
+				curStart = i + 1
+			} else {
+				out = append(out, l[curStart:i])
+				curStart = -1
+			}
 		case ' ', '\t':
 			if curStart != -1 {
 				out = append(out, l[curStart:i])
@@ -546,7 +560,13 @@ func main() {
 
 	fmt.Println(string(out))
 
-	if err := GolangCodeGen(schema, os.Stdout); err != nil {
+	outfi, err := os.Create("output.go")
+	if err != nil {
+		panic(err)
+	}
+	defer outfi.Close()
+
+	if err := GolangCodeGen(schema, outfi); err != nil {
 		panic(err)
 	}
 }
@@ -561,9 +581,11 @@ func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 	}
 
 	sort.Strings(types)
+	fmt.Fprintf(w, "package main\n\n")
 
 	for _, tname := range types {
 		t := sm[tname]
+		tname := strings.Title(tname)
 		switch t := t.(type) {
 		case *TypeStruct:
 			fmt.Fprintf(w, "type %s struct {\n", tname)
@@ -572,9 +594,19 @@ func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 				if f.Nullable {
 					t = "*" + t
 				}
+				fname := strings.Title(fname)
 				fmt.Fprintf(w, "\t%s %s\n", fname, t)
 			}
 			fmt.Fprintf(w, "}\n\n")
+		case *TypeEnum:
+			enumTag := "_Enum" + tname
+			fmt.Fprintf(w, "type %s interface {\n\t%s()\n}\n", tname, enumTag)
+			for mem := range t.Members {
+				enumelem := tname + mem
+				fmt.Fprintf(w, "type %s struct{}\n", enumelem)
+				fmt.Fprintf(w, "func (_ %s) %s() {}\n", enumelem, enumTag)
+				fmt.Fprintf(w, "var _ %s = (*%s)(nil)\n", tname, enumelem)
+			}
 		}
 	}
 	return nil
