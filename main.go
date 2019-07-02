@@ -15,6 +15,102 @@ type TypeStruct struct {
 	Representation StructRepresentation
 }
 
+func (t *TypeStruct) TypeDecl() string {
+	term := "struct {"
+	for fname, f := range t.Fields {
+		term += fmt.Sprintf("  %s", fname)
+		if f.Optional {
+			term += " optional"
+		}
+		if f.Nullable {
+			term += " nullable"
+		}
+		term += " "
+		term += TypeTermDecl(f.Type)
+		term += "\n"
+	}
+	term += "}"
+	return term
+}
+
+func (t *TypeBool) TypeDecl() string {
+	return "Bool"
+}
+func (t *TypeInt) TypeDecl() string {
+	return "Int"
+}
+func (t *TypeFloat) TypeDecl() string {
+	return "Float"
+}
+func (t *TypeMap) TypeDecl() string {
+	return fmt.Sprintf("{%s:%s}", t.KeyType, TypeTermDecl(t.ValueType))
+}
+func (t *TypeList) TypeDecl() string {
+	tval := TypeTermDecl(t.ValueType)
+	if t.ValueNullable {
+		tval = "nullable " + tval
+	}
+	return fmt.Sprintf("[%s]", tval)
+}
+func (t *TypeUnion) TypeDecl() string {
+	term := "union {\n"
+	switch rep := t.Representation.(type) {
+	case *UnionRepresentation_Envelope:
+		panic("TODO")
+	case UnionRepresentation_Keyed:
+		for k, v := range rep {
+			term += fmt.Sprintf("  | %s %s\n", v, k)
+		}
+
+		term += "} representation keyed"
+	case UnionRepresentation_Kinded:
+		for k, v := range rep {
+			term += fmt.Sprintf("  | %s %s\n", v, k)
+		}
+
+		term += "} representation kinded"
+	case *UnionRepresentation_Inline:
+		for k, v := range rep.DiscriminantTable {
+			term += fmt.Sprintf("  | %s %s\n", v, k)
+		}
+
+		term += fmt.Sprintf("} representation inline \"%s\"", rep.DiscriminatorKey)
+	default:
+		panic(fmt.Sprintf("unrecognized type: %T", t.Representation))
+	}
+
+	return term
+}
+func (t *TypeEnum) TypeDecl() string {
+	panic("TODO")
+}
+func (t *TypeLink) TypeDecl() string {
+	return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
+}
+
+func (t *TypeString) TypeDecl() string {
+	return "String"
+}
+
+func (t *TypeBytes) TypeDecl() string {
+	return "Bytes"
+}
+
+func (t NamedType) TypeDecl() string {
+	return string(t)
+}
+
+func TypeTermDecl(t TypeTerm) string {
+	switch t := t.(type) {
+	case Type:
+		return t.TypeDecl()
+	default:
+		panic("what is this")
+	}
+}
+
+type NamedType string
+
 type StructRepresentation interface{}
 
 type StructRepresentation_Map struct {
@@ -84,6 +180,7 @@ type UnionRepresentation_Inline struct {
 type SchemaMap map[string]Type
 
 type Type interface {
+	TypeDecl() string
 }
 
 type TypeMap struct {
@@ -441,7 +538,7 @@ func parseTypeTerm(toks []string) (Type, error) {
 		}, nil
 	default:
 		if len(toks) == 1 {
-			return toks[0], nil
+			return NamedType(toks[0]), nil
 		}
 		fmt.Println("bad bad bad: ", toks[0])
 		fmt.Println("Full line: ")
@@ -573,6 +670,30 @@ func main() {
 
 /// SEPARATE FILE
 
+func ExportIpldSchema(sm SchemaMap, w io.Writer) error {
+	var types []string
+	for tname := range sm {
+		types = append(types, tname)
+	}
+
+	sort.Strings(types)
+
+	for _, tname := range types {
+		t := sm[tname]
+		fmt.Fprintf(w, "type %s %s", tname, t.TypeDecl())
+		switch t := t.(type) {
+		case *TypeStruct:
+
+		default:
+			return fmt.Errorf("unrecognized type: %T", t)
+		}
+	}
+
+	return nil
+}
+
+/// SEPARATE FILE
+
 // in reality, the 'right' way to do this is to probably use the golang ast packages
 func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 	var types []string
@@ -590,7 +711,7 @@ func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 		case *TypeStruct:
 			fmt.Fprintf(w, "type %s struct {\n", tname)
 			for fname, f := range t.Fields {
-				t := typeToGoType(f.Type)
+				t := typeToGoType(f.Type.(Type)) // TODO: should TypeTerm just be type? it seems like it wants that
 				if f.Nullable {
 					t = "*" + t
 				}
@@ -607,6 +728,15 @@ func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 				fmt.Fprintf(w, "func (_ %s) %s() {}\n", enumelem, enumTag)
 				fmt.Fprintf(w, "var _ %s = (*%s)(nil)\n", tname, enumelem)
 			}
+		case *TypeUnion:
+			fmt.Fprintf(w, "type %s interface {}\n", tname)
+			/*
+				switch rep := t.Representation.(type) {
+
+				}
+			*/
+		default:
+			fmt.Fprintf(w, "type %s %s\n\n", tname, typeToGoType(t))
 		}
 	}
 	return nil
@@ -629,7 +759,7 @@ func typeToGoType(t Type) string {
 		return fmt.Sprintf("cid.Cid /* IPLD: %s */", typeToGoType(t))
 
 	case *TypeList:
-		subtype := typeToGoType(t.ValueType)
+		subtype := typeToGoType(t.ValueType.(Type)) // TypeTerm really wants to be a Type
 		if t.ValueNullable {
 			subtype = "*" + subtype
 		}
@@ -640,13 +770,13 @@ func typeToGoType(t Type) string {
 	case *TypeUnion:
 		panic("no")
 	case *TypeMap:
-		val := typeToGoType(t.ValueType)
+		val := typeToGoType(t.ValueType.(Type))
 		if t.ValueNullable {
 			val = "*" + val
 		}
-		return fmt.Sprintf("map[%s]%s", typeToGoType(t.KeyType), val)
-	case string:
-		return t
+		return fmt.Sprintf("map[%s]%s", typeToGoType(NamedType(t.KeyType)), val)
+	case NamedType:
+		return string(t)
 	default:
 		fmt.Printf("BAD TYPE: %T\n", t)
 		panic("unrecognized type")
