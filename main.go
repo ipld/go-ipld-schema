@@ -16,7 +16,12 @@ type TypeStruct struct {
 }
 
 func (t *TypeStruct) TypeDecl() string {
-	term := "struct {"
+	term := "struct {\n"
+
+	fieldInfo := make(map[string]SRMFieldDetails)
+	if srep, ok := t.Representation.(*StructRepresentation_Map); ok {
+		fieldInfo = srep.Fields
+	}
 	for fname, f := range t.Fields {
 		term += fmt.Sprintf("  %s", fname)
 		if f.Optional {
@@ -27,9 +32,31 @@ func (t *TypeStruct) TypeDecl() string {
 		}
 		term += " "
 		term += TypeTermDecl(f.Type)
+
+		if inf, ok := fieldInfo[fname]; ok && (inf.Alias != "" || inf.Default != nil) {
+			term += " ("
+			if inf.Alias != "" {
+				term += fmt.Sprintf("rename \"%s\"", inf.Alias)
+			}
+			if inf.Default != nil {
+				if inf.Alias != "" {
+					term += ", "
+				}
+				term += fmt.Sprintf("implicit %q", inf.Default)
+			}
+			term += ")"
+		}
 		term += "\n"
 	}
 	term += "}"
+	if t.Representation != nil {
+		switch t.Representation.(type) {
+		case *StructRepresentation_Map:
+			term += " representation map"
+		case *StructRepresentation_Tuple:
+			term += " representation tuple"
+		}
+	}
 	return term
 }
 
@@ -71,7 +98,7 @@ func (t *TypeUnion) TypeDecl() string {
 		term += "} representation kinded"
 	case *UnionRepresentation_Inline:
 		for k, v := range rep.DiscriminantTable {
-			term += fmt.Sprintf("  | %s %s\n", v, k)
+			term += fmt.Sprintf("  | %s %q\n", v, k)
 		}
 
 		term += fmt.Sprintf("} representation inline \"%s\"", rep.DiscriminatorKey)
@@ -81,9 +108,16 @@ func (t *TypeUnion) TypeDecl() string {
 
 	return term
 }
+
 func (t *TypeEnum) TypeDecl() string {
-	panic("TODO")
+	term := "enum {\n"
+	for m := range t.Members {
+		term += fmt.Sprintf("  | \"%s\"\n", m)
+	}
+	term += "}"
+	return term
 }
+
 func (t *TypeLink) TypeDecl() string {
 	return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
 }
@@ -208,15 +242,16 @@ loop:
 			} else {
 				out = append(out, l[curStart:i])
 				curStart = -1
+				quoted = false
 			}
 		case ' ', '\t':
 			if curStart != -1 {
 				out = append(out, l[curStart:i])
 			}
 			curStart = -1
-		case '{', '[':
+		case '{', '[', '(':
 			out = append(out, l[i:i+1])
-		case '}', ']', ':':
+		case '}', ']', ':', ')':
 			if curStart != -1 {
 				out = append(out, l[curStart:i])
 			}
@@ -363,18 +398,22 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 
 			switch toks[2] {
 			case "kinded":
-				return &TypeUnion{&UnionRepresentation_Kinded{}}, nil
+				return &TypeUnion{UnionRepresentation_Kinded{}}, nil
 			case "inline":
-				rep := &UnionRepresentation_Inline{
-					DiscriminatorKey:  toks[3],
-					DiscriminantTable: make(map[string]TypeName),
+				if len(toks) < 4 {
+					return nil, fmt.Errorf("expected open bracket for inline union representation block")
+				}
+				urep, err := parseUnionInlineRepresentation(s)
+				if err != nil {
+					return nil, err
 				}
 
+				urep.DiscriminantTable = make(map[string]TypeName)
 				for k, v := range unionVals {
-					rep.DiscriminantTable[k] = TypeName(v)
+					urep.DiscriminantTable[k] = TypeName(v)
 				}
 
-				return &TypeUnion{rep}, nil
+				return &TypeUnion{urep}, nil
 			case "keyed":
 				rep := make(UnionRepresentation_Keyed)
 				for k, v := range unionVals {
@@ -391,10 +430,36 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 	return nil, fmt.Errorf("unterminated union declaration")
 }
 
+func parseUnionInlineRepresentation(s *bufio.Scanner) (*UnionRepresentation_Inline, error) {
+	var urep UnionRepresentation_Inline
+	for s.Scan() {
+		toks := tokens(s.Text())
+		if len(toks) == 0 {
+			continue
+		}
+
+		switch toks[0] {
+		case "discriminantKey":
+			if urep.DiscriminatorKey != "" {
+				return nil, fmt.Errorf("multiple discriminatorKeys in inline representation")
+			}
+			urep.DiscriminatorKey = toks[1]
+		case "}":
+			return &urep, nil
+		default:
+			return nil, fmt.Errorf("unrecognized token %q in inline union representation", toks[0])
+
+		}
+	}
+
+	return nil, fmt.Errorf("reached end of file while parsing inline union representation")
+}
+
 func parseStruct(s *bufio.Scanner) (*TypeStruct, error) {
 	st := &TypeStruct{
 		Fields: make(map[string]*StructField),
 	}
+	freps := make(map[string]SRMFieldDetails)
 	for s.Scan() {
 		toks := tokens(s.Text())
 		if len(toks) == 0 {
@@ -404,7 +469,7 @@ func parseStruct(s *bufio.Scanner) (*TypeStruct, error) {
 		if toks[0] == "}" {
 			if len(toks) > 1 {
 				if toks[1] == "representation" {
-					repr, err := parseStructRepr(toks, s)
+					repr, err := parseStructRepr(toks, s, freps)
 					if err != nil {
 						return nil, err
 					}
@@ -415,9 +480,30 @@ func parseStruct(s *bufio.Scanner) (*TypeStruct, error) {
 			return st, nil
 		}
 
+		var frep *SRMFieldDetails
+		if toks[len(toks)-1] == ")" {
+			fmt.Println("Field details!", toks)
+			frepStart := 0
+			for ; frepStart < len(toks); frepStart++ {
+				if toks[frepStart] == "(" {
+					break
+				}
+			}
+			var err error
+			frep, err = parseStructFieldRep(toks[frepStart+1 : len(toks)-1])
+			if err != nil {
+				return nil, err
+			}
+			toks = toks[:frepStart]
+		}
+
 		fname, strf, err := parseStructField(toks)
 		if err != nil {
 			return nil, err
+		}
+
+		if frep != nil {
+			freps[fname] = *frep
 		}
 
 		st.Fields[fname] = strf
@@ -460,6 +546,42 @@ loop:
 		Nullable: nullable,
 		Optional: optional,
 	}, nil
+}
+
+func parseStructFieldRep(toks []string) (*SRMFieldDetails, error) {
+	var fd SRMFieldDetails
+	applyInfo := func(k, v string) error {
+		switch k {
+		case "implicit":
+			if fd.Default != nil {
+				return fmt.Errorf("duplicate implicit in struct field representation")
+			}
+			fd.Default = v
+		case "rename":
+			if fd.Alias != "" {
+				return fmt.Errorf("duplicate alias in struct field representation")
+			}
+			fd.Alias = v
+		default:
+			return fmt.Errorf("unrecognized struct field representation key: %s", k)
+		}
+		return nil
+	}
+
+	switch len(toks) {
+	case 5:
+		if err := applyInfo(toks[3], toks[4]); err != nil {
+			return nil, err
+		}
+		fallthrough
+	case 2:
+		if err := applyInfo(toks[0], toks[1]); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("incorrectly formatted struct field representation: %q", toks)
+	}
+	return &fd, nil
 }
 
 func parseTypeTerm(toks []string) (Type, error) {
@@ -547,7 +669,7 @@ func parseTypeTerm(toks []string) (Type, error) {
 	}
 }
 
-func parseStructRepr(line []string, s *bufio.Scanner) (StructRepresentation, error) {
+func parseStructRepr(line []string, s *bufio.Scanner, freps map[string]SRMFieldDetails) (StructRepresentation, error) {
 	if len(line) < 3 {
 		return nil, fmt.Errorf("no representation kind given")
 	}
@@ -555,48 +677,23 @@ func parseStructRepr(line []string, s *bufio.Scanner) (StructRepresentation, err
 	kind := line[2]
 	switch kind {
 	case "tuple":
+		if len(freps) > 0 {
+			return nil, fmt.Errorf("tuple struct representation cannot have field details")
+		}
 		if len(line) == 4 {
 			return nil, fmt.Errorf("cant yet handle detailed tuple representation")
 		}
 
 		return &StructRepresentation_Tuple{}, nil
 	case "map":
-		if len(line) != 4 || line[3] != "{" {
-			return nil, fmt.Errorf("expected an open brace")
+		if len(line) > 3 {
+			return nil, fmt.Errorf("unexpected tokens after 'representation map'")
 		}
 
-		return parseStructRepMap(s)
+		return &StructRepresentation_Map{Fields: freps}, nil
 	default:
 		return nil, fmt.Errorf("unrecognized struct representation: %s", kind)
 	}
-}
-
-func parseStructRepMap(s *bufio.Scanner) (*StructRepresentation_Map, error) {
-	srm := &StructRepresentation_Map{
-		Fields: make(map[string]SRMFieldDetails),
-	}
-	for s.Scan() {
-		toks := tokens(s.Text())
-		switch toks[0] {
-		case "}":
-			return srm, nil
-		case "field":
-			var fdet SRMFieldDetails
-			fname := toks[1]
-			switch toks[2] {
-			case "alias":
-				fdet.Alias = toks[2]
-			case "default":
-				fdet.Default = toks[2]
-			default:
-				return nil, fmt.Errorf("unrecognized field representation option: %s", toks[2])
-			}
-			srm.Fields[fname] = fdet
-		default:
-			return nil, fmt.Errorf("unrecognized token in struct map representation: %s", toks[0])
-		}
-	}
-	return nil, fmt.Errorf("unterminated struct map representation")
 }
 
 func ParseSchema(s *bufio.Scanner) (SchemaMap, error) {
@@ -625,7 +722,7 @@ func ParseSchema(s *bufio.Scanner) (SchemaMap, error) {
 }
 
 func main() {
-	//fmt.Printf("%q\n", tokens("bar [Int]"))
+	//fmt.Printf("%q\n", tokens("bar [Int] (implicit \"cat\")"))
 	//return
 	/*
 			testval := `
@@ -657,13 +754,18 @@ func main() {
 
 	fmt.Println(string(out))
 
-	outfi, err := os.Create("output.go")
-	if err != nil {
-		panic(err)
-	}
-	defer outfi.Close()
+	/*
+		outfi, err := os.Create("output.go")
+		if err != nil {
+			panic(err)
+		}
+		defer outfi.Close()
 
-	if err := GolangCodeGen(schema, outfi); err != nil {
+		if err := GolangCodeGen(schema, outfi); err != nil {
+			panic(err)
+		}
+	*/
+	if err := ExportIpldSchema(schema, os.Stdout); err != nil {
 		panic(err)
 	}
 }
@@ -680,13 +782,7 @@ func ExportIpldSchema(sm SchemaMap, w io.Writer) error {
 
 	for _, tname := range types {
 		t := sm[tname]
-		fmt.Fprintf(w, "type %s %s", tname, t.TypeDecl())
-		switch t := t.(type) {
-		case *TypeStruct:
-
-		default:
-			return fmt.Errorf("unrecognized type: %T", t)
-		}
+		fmt.Fprintf(w, "type %s %s\n\n", tname, t.TypeDecl())
 	}
 
 	return nil

@@ -87,7 +87,9 @@ type Type union {
 	| TypeUnion "union"
 	| TypeStruct "struct"
 	| TypeEnum "enum"
-} representation inline "kind"
+} representation inline {
+	discriminantKey "kind"
+}
 
 ## TypeKind enumerates all the major kinds of type.
 ## Notice this enum's members are the same as the set of strings used as
@@ -164,20 +166,16 @@ type TypeFloat struct {}
 type TypeMap struct {
 	keyType TypeName # additionally, the referenced type must be reprkind==string.
 	valueType TypeTerm
-	valueNullable Bool
-} representation map {
-	field valueNullable default "false"
-}
+	valueNullable Bool (implicit "false")
+} representation map
 
 ## TypeList describes a list.
 ## The values of the list have some specific type of their own.
 ##
 type TypeList struct {
 	valueType TypeTerm
-	valueNullable Bool
-} representation map {
-	field valueNullable default "false"
-}
+	valueNullable Bool (implicit "false")
+} representation map
 
 ## TypeLink describes a hash linking to another object (a CID).
 ##
@@ -315,12 +313,9 @@ type TypeStruct struct {
 ##
 type StructField struct {
 	type TypeTerm
-	optional Bool
-	nullable Bool
-} representation map {
-	field optional default "false"
-	field nullable default "false"
-}
+	optional Bool (implicit "false")
+	nullable Bool (implicit "false")
+} representation map
 
 ## TypeTerm is a union of either TypeName or an InlineDefn. th It's used for the
 ## value type in the recursive types (maps, lists, and the fields of structs),
@@ -356,7 +351,9 @@ type TypeTerm union {
 type InlineDefn union {
 	| TypeMap "map"
 	| TypeList "list"
-} representation inline "kind"
+} representation inline {
+	discriminantKey "kind"
+}
 
 ## StructRepresentation describes how a struct type should be mapped onto
 ## its IPLD Data Model representation.  Typically, maps are the representation
