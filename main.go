@@ -59,7 +59,7 @@ var schemaToJsonCmd = cli.Command{
 			return err
 		}
 
-		out, err := json.MarshalIndent(sc, "", "  ")
+		out, err := json.MarshalIndent(sc, "", "\t")
 		if err != nil {
 			panic(err)
 		}
