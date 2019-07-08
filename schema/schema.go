@@ -17,7 +17,7 @@ func (t *TypeStruct) TypeDecl() string {
 		fieldInfo = srep.Fields
 	}
 	for fname, f := range t.Fields {
-		term += fmt.Sprintf("  %s", fname)
+		term += fmt.Sprintf("\t%s", fname)
 		if f.Optional {
 			term += " optional"
 		}
@@ -80,19 +80,19 @@ func (t *TypeUnion) TypeDecl() string {
 		panic("TODO")
 	case UnionRepresentation_Keyed:
 		for k, v := range rep {
-			term += fmt.Sprintf("  | %s %s\n", v, k)
+			term += fmt.Sprintf("\t| %s %s\n", v, k)
 		}
 
 		term += "} representation keyed"
 	case UnionRepresentation_Kinded:
 		for k, v := range rep {
-			term += fmt.Sprintf("  | %s %s\n", v, k)
+			term += fmt.Sprintf("\t| %s %s\n", v, k)
 		}
 
 		term += "} representation kinded"
 	case *UnionRepresentation_Inline:
 		for k, v := range rep.DiscriminantTable {
-			term += fmt.Sprintf("  | %s %q\n", v, k)
+			term += fmt.Sprintf("\t| %s %q\n", v, k)
 		}
 
 		term += fmt.Sprintf("} representation inline \"%s\"", rep.DiscriminatorKey)
@@ -106,7 +106,7 @@ func (t *TypeUnion) TypeDecl() string {
 func (t *TypeEnum) TypeDecl() string {
 	term := "enum {\n"
 	for m := range t.Members {
-		term += fmt.Sprintf("  | \"%s\"\n", m)
+		term += fmt.Sprintf("\t| \"%s\"\n", m)
 	}
 	term += "}"
 	return term
