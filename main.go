@@ -4,877 +4,106 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"sort"
-	"strings"
+
+	"github.com/urfave/cli"
+
+	"github.com/whyrusleeping/ipld-schema/gen-go"
+	"github.com/whyrusleeping/ipld-schema/parser"
+	"github.com/whyrusleeping/ipld-schema/schema"
 )
 
-type TypeStruct struct {
-	Fields         map[string]*StructField
-	Representation StructRepresentation
-}
-
-func (t *TypeStruct) TypeDecl() string {
-	term := "struct {\n"
-
-	fieldInfo := make(map[string]SRMFieldDetails)
-	if srep, ok := t.Representation.(*StructRepresentation_Map); ok {
-		fieldInfo = srep.Fields
-	}
-	for fname, f := range t.Fields {
-		term += fmt.Sprintf("  %s", fname)
-		if f.Optional {
-			term += " optional"
-		}
-		if f.Nullable {
-			term += " nullable"
-		}
-		term += " "
-		term += TypeTermDecl(f.Type)
-
-		if inf, ok := fieldInfo[fname]; ok && (inf.Alias != "" || inf.Default != nil) {
-			term += " ("
-			if inf.Alias != "" {
-				term += fmt.Sprintf("rename \"%s\"", inf.Alias)
-			}
-			if inf.Default != nil {
-				if inf.Alias != "" {
-					term += ", "
-				}
-				term += fmt.Sprintf("implicit %q", inf.Default)
-			}
-			term += ")"
-		}
-		term += "\n"
-	}
-	term += "}"
-	if t.Representation != nil {
-		switch t.Representation.(type) {
-		case *StructRepresentation_Map:
-			term += " representation map"
-		case *StructRepresentation_Tuple:
-			term += " representation tuple"
-		}
-	}
-	return term
-}
-
-func (t *TypeBool) TypeDecl() string {
-	return "Bool"
-}
-func (t *TypeInt) TypeDecl() string {
-	return "Int"
-}
-func (t *TypeFloat) TypeDecl() string {
-	return "Float"
-}
-func (t *TypeMap) TypeDecl() string {
-	return fmt.Sprintf("{%s:%s}", t.KeyType, TypeTermDecl(t.ValueType))
-}
-func (t *TypeList) TypeDecl() string {
-	tval := TypeTermDecl(t.ValueType)
-	if t.ValueNullable {
-		tval = "nullable " + tval
-	}
-	return fmt.Sprintf("[%s]", tval)
-}
-func (t *TypeUnion) TypeDecl() string {
-	term := "union {\n"
-	switch rep := t.Representation.(type) {
-	case *UnionRepresentation_Envelope:
-		panic("TODO")
-	case UnionRepresentation_Keyed:
-		for k, v := range rep {
-			term += fmt.Sprintf("  | %s %s\n", v, k)
+var genGoCmd = cli.Command{
+	Name: "gen-go",
+	Action: func(c *cli.Context) error {
+		if !c.Args().Present() {
+			return fmt.Errorf("must specify schema file to generate code for")
 		}
 
-		term += "} representation keyed"
-	case UnionRepresentation_Kinded:
-		for k, v := range rep {
-			term += fmt.Sprintf("  | %s %s\n", v, k)
+		fi, err := os.Open(c.Args().First())
+		if err != nil {
+			return err
+		}
+		defer fi.Close()
+
+		s := bufio.NewScanner(fi)
+		sc, err := parser.ParseSchema(s)
+		if err != nil {
+			return err
 		}
 
-		term += "} representation kinded"
-	case *UnionRepresentation_Inline:
-		for k, v := range rep.DiscriminantTable {
-			term += fmt.Sprintf("  | %s %q\n", v, k)
+		if err := gengo.GolangCodeGen(sc, os.Stdout); err != nil {
+			return err
 		}
 
-		term += fmt.Sprintf("} representation inline \"%s\"", rep.DiscriminatorKey)
-	default:
-		panic(fmt.Sprintf("unrecognized type: %T", t.Representation))
-	}
-
-	return term
-}
-
-func (t *TypeEnum) TypeDecl() string {
-	term := "enum {\n"
-	for m := range t.Members {
-		term += fmt.Sprintf("  | \"%s\"\n", m)
-	}
-	term += "}"
-	return term
-}
-
-func (t *TypeLink) TypeDecl() string {
-	return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
-}
-
-func (t *TypeString) TypeDecl() string {
-	return "String"
-}
-
-func (t *TypeBytes) TypeDecl() string {
-	return "Bytes"
-}
-
-func (t NamedType) TypeDecl() string {
-	return string(t)
-}
-
-func TypeTermDecl(t TypeTerm) string {
-	switch t := t.(type) {
-	case Type:
-		return t.TypeDecl()
-	default:
-		panic("what is this")
-	}
-}
-
-type NamedType string
-
-type StructRepresentation interface{}
-
-type StructRepresentation_Map struct {
-	Fields map[string]SRMFieldDetails
-}
-
-type StructRepresentation_Tuple struct {
-	FieldOrder []string
-}
-
-type SRMFieldDetails struct {
-	Alias   string
-	Default interface{}
-}
-
-type StructField struct {
-	Type     TypeTerm
-	Optional bool
-	Nullable bool
-}
-
-type TypeTerm interface{}
-
-type TypeBool struct{}
-type TypeString struct{}
-type TypeBytes struct{}
-type TypeInt struct{}
-type TypeFloat struct{}
-
-type TypeLink struct {
-	ValueType TypeTerm
-}
-
-type TypeList struct {
-	ValueType     TypeTerm
-	ValueNullable bool
-}
-
-type TypeEnum struct {
-	Members map[string]struct{}
-}
-
-type TypeUnion struct {
-	Representation UnionRepresentation
-}
-
-type UnionRepresentation interface{}
-
-type RepresentationKind string
-type TypeName string
-
-type UnionRepresentation_Kinded map[RepresentationKind]TypeName
-
-type UnionRepresentation_Keyed map[string]TypeName
-
-type UnionRepresentation_Envelope struct {
-	DiscriminatorKey  string
-	ContentKey        string
-	DiscriminantTable map[string]TypeName
-}
-
-type UnionRepresentation_Inline struct {
-	DiscriminatorKey  string
-	DiscriminantTable map[string]TypeName
-}
-
-type SchemaMap map[string]Type
-
-type Type interface {
-	TypeDecl() string
-}
-
-type TypeMap struct {
-	KeyType       string
-	ValueType     TypeTerm
-	ValueNullable bool
-}
-
-func tokens(l string) []string {
-	var out []string
-	curStart := -1
-
-	var quoted bool
-loop:
-	for i := 0; i < len(l); i++ {
-		if quoted && l[i] != '"' {
-			continue
-		}
-
-		switch l[i] {
-		case '"':
-			if !quoted {
-				quoted = true
-				curStart = i + 1
-			} else {
-				out = append(out, l[curStart:i])
-				curStart = -1
-				quoted = false
-			}
-		case ' ', '\t':
-			if curStart != -1 {
-				out = append(out, l[curStart:i])
-			}
-			curStart = -1
-		case '{', '[', '(':
-			out = append(out, l[i:i+1])
-		case '}', ']', ':', ')':
-			if curStart != -1 {
-				out = append(out, l[curStart:i])
-			}
-			out = append(out, l[i:i+1])
-			curStart = -1
-		case '#':
-			break loop
-		default:
-			if curStart == -1 {
-				curStart = i
-			}
-		}
-	}
-	if curStart != -1 {
-		out = append(out, l[curStart:])
-	}
-
-	return out
-}
-
-/*
-func tokens(l string) []string {
-	l = strings.TrimSpace(l)
-	if strings.HasPrefix(l, "#") {
 		return nil
-	}
-
-	var out []string
-	for _, s := range strings.Split(l, " ") {
-		trimmed := strings.TrimSpace(s)
-		if trimmed != "" {
-			out = append(out, trimmed)
-		}
-	}
-	return out
-}
-*/
-
-func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
-	if len(tline) < 3 {
-		return "", nil, fmt.Errorf("expected at least three tokens on type definition line")
-	}
-
-	// thinking we should just call 'parseTypeTerm' here...
-
-	tname := tline[1]
-	ttype := tline[2]
-
-	var t Type
-	var err error
-	switch ttype {
-	case "struct":
-		if len(tline) < 4 || tline[3] != "{" {
-			return "", nil, fmt.Errorf("struct declaration must contain an open brace")
-		}
-
-		if len(tline) > 4 {
-			// parse fucky struct declaration
-			if tline[len(tline)-1] != "}" {
-				return "", nil, fmt.Errorf("oneline struct declaration must terminate on same line")
-			}
-
-			inner := tline[4 : len(tline)-1]
-			if len(inner) == 0 {
-				return tname, &TypeStruct{}, nil
-			}
-
-			fname, strf, err := parseStructField(inner)
-			if err != nil {
-				return "", nil, err
-			}
-
-			return tname, &TypeStruct{
-				Fields: map[string]*StructField{
-					fname: strf,
-				},
-			}, nil
-		}
-
-		t, err = parseStruct(s)
-	case "union":
-		if len(tline) != 4 || tline[3] != "{" {
-			return "", nil, fmt.Errorf("union declaration must end in an open brace")
-		}
-		t, err = parseUnion(s)
-	case "enum":
-		if len(tline) != 4 || tline[3] != "{" {
-			return "", nil, fmt.Errorf("enum declaration must end in an open brace")
-		}
-		t, err = parseEnum(s)
-	default:
-		t, err = parseTypeTerm(tline[2:])
-	}
-
-	return tname, t, err
+	},
 }
 
-func parseEnum(s *bufio.Scanner) (*TypeEnum, error) {
-	vals := make(map[string]struct{})
-	for s.Scan() {
-		toks := tokens(s.Text())
-		if len(toks) == 0 {
-			continue
+var schemaToJsonCmd = cli.Command{
+	Name: "to-json",
+	Action: func(c *cli.Context) error {
+		if !c.Args().Present() {
+			return fmt.Errorf("must specify schema file to read")
 		}
 
-		switch toks[0] {
-		case "|":
-			vals[toks[1]] = struct{}{}
-		case "}":
-			return &TypeEnum{
-				Members: vals,
-			}, nil
-		default:
-			return nil, fmt.Errorf("unexpected token: %s", toks[0])
-		}
-	}
-	return nil, fmt.Errorf("unterminated enum")
-}
-
-func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
-	unionVals := make(map[string]string)
-	for s.Scan() {
-		toks := tokens(s.Text())
-		if len(toks) == 0 {
-			continue
-		}
-
-		switch toks[0] {
-		case "|":
-			if len(toks) != 3 {
-				return nil, fmt.Errorf("must have three tokens in union entry")
-			}
-			typeName := toks[1]
-			key := toks[2]
-			unionVals[key] = typeName
-		case "}":
-			if len(toks) < 3 {
-				return nil, fmt.Errorf("union closing line must contain at least three tokens")
-			}
-
-			if toks[1] != "representation" {
-				return nil, fmt.Errorf("must specify union representation")
-			}
-
-			switch toks[2] {
-			case "kinded":
-				return &TypeUnion{UnionRepresentation_Kinded{}}, nil
-			case "inline":
-				if len(toks) < 4 {
-					return nil, fmt.Errorf("expected open bracket for inline union representation block")
-				}
-				urep, err := parseUnionInlineRepresentation(s)
-				if err != nil {
-					return nil, err
-				}
-
-				urep.DiscriminantTable = make(map[string]TypeName)
-				for k, v := range unionVals {
-					urep.DiscriminantTable[k] = TypeName(v)
-				}
-
-				return &TypeUnion{urep}, nil
-			case "keyed":
-				rep := make(UnionRepresentation_Keyed)
-				for k, v := range unionVals {
-					rep[k] = TypeName(v)
-				}
-				return &TypeUnion{rep}, nil
-			case "envelope":
-				return nil, fmt.Errorf("Not Yet Implemented: enveloped unions")
-			}
-
-		}
-	}
-
-	return nil, fmt.Errorf("unterminated union declaration")
-}
-
-func parseUnionInlineRepresentation(s *bufio.Scanner) (*UnionRepresentation_Inline, error) {
-	var urep UnionRepresentation_Inline
-	for s.Scan() {
-		toks := tokens(s.Text())
-		if len(toks) == 0 {
-			continue
-		}
-
-		switch toks[0] {
-		case "discriminantKey":
-			if urep.DiscriminatorKey != "" {
-				return nil, fmt.Errorf("multiple discriminatorKeys in inline representation")
-			}
-			urep.DiscriminatorKey = toks[1]
-		case "}":
-			return &urep, nil
-		default:
-			return nil, fmt.Errorf("unrecognized token %q in inline union representation", toks[0])
-
-		}
-	}
-
-	return nil, fmt.Errorf("reached end of file while parsing inline union representation")
-}
-
-func parseStruct(s *bufio.Scanner) (*TypeStruct, error) {
-	st := &TypeStruct{
-		Fields: make(map[string]*StructField),
-	}
-	freps := make(map[string]SRMFieldDetails)
-	for s.Scan() {
-		toks := tokens(s.Text())
-		if len(toks) == 0 {
-			continue
-		}
-
-		if toks[0] == "}" {
-			if len(toks) > 1 {
-				if toks[1] == "representation" {
-					repr, err := parseStructRepr(toks, s, freps)
-					if err != nil {
-						return nil, err
-					}
-					st.Representation = repr
-				}
-			}
-
-			return st, nil
-		}
-
-		var frep *SRMFieldDetails
-		if toks[len(toks)-1] == ")" {
-			fmt.Println("Field details!", toks)
-			frepStart := 0
-			for ; frepStart < len(toks); frepStart++ {
-				if toks[frepStart] == "(" {
-					break
-				}
-			}
-			var err error
-			frep, err = parseStructFieldRep(toks[frepStart+1 : len(toks)-1])
-			if err != nil {
-				return nil, err
-			}
-			toks = toks[:frepStart]
-		}
-
-		fname, strf, err := parseStructField(toks)
+		fi, err := os.Open(c.Args().First())
 		if err != nil {
-			return nil, err
+			return err
+		}
+		defer fi.Close()
+
+		s := bufio.NewScanner(fi)
+		sc, err := parser.ParseSchema(s)
+		if err != nil {
+			return err
 		}
 
-		if frep != nil {
-			freps[fname] = *frep
+		out, err := json.MarshalIndent(sc, "", "  ")
+		if err != nil {
+			panic(err)
 		}
 
-		st.Fields[fname] = strf
-	}
+		fmt.Println(string(out))
 
-	return st, nil
-}
-
-func parseStructField(toks []string) (string, *StructField, error) {
-	var optional, nullable bool
-	var i int = 1
-
-loop:
-	for ; i < len(toks)-1; i++ {
-		switch toks[i] {
-		case "optional":
-			if optional {
-				return "", nil, fmt.Errorf("multiple optional keywords")
-			}
-			optional = true
-		case "nullable":
-			if nullable {
-				return "", nil, fmt.Errorf("multiple nullable keywords")
-			}
-			nullable = true
-		default:
-			break loop
-		}
-	}
-
-	trepr, err := parseTypeTerm(toks[i:])
-	if err != nil {
-		return "", nil, err
-	}
-
-	fname := toks[0]
-
-	return fname, &StructField{
-		Type:     trepr,
-		Nullable: nullable,
-		Optional: optional,
-	}, nil
-}
-
-func parseStructFieldRep(toks []string) (*SRMFieldDetails, error) {
-	var fd SRMFieldDetails
-	applyInfo := func(k, v string) error {
-		switch k {
-		case "implicit":
-			if fd.Default != nil {
-				return fmt.Errorf("duplicate implicit in struct field representation")
-			}
-			fd.Default = v
-		case "rename":
-			if fd.Alias != "" {
-				return fmt.Errorf("duplicate alias in struct field representation")
-			}
-			fd.Alias = v
-		default:
-			return fmt.Errorf("unrecognized struct field representation key: %s", k)
-		}
 		return nil
-	}
-
-	switch len(toks) {
-	case 5:
-		if err := applyInfo(toks[3], toks[4]); err != nil {
-			return nil, err
-		}
-		fallthrough
-	case 2:
-		if err := applyInfo(toks[0], toks[1]); err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("incorrectly formatted struct field representation: %q", toks)
-	}
-	return &fd, nil
+	},
 }
 
-func parseTypeTerm(toks []string) (Type, error) {
-	if len(toks) == 0 {
-		return nil, fmt.Errorf("no tokens for type term")
-	}
-
-	switch toks[0] {
-	case "[":
-		toks = toks[1:]
-
-		last := toks[len(toks)-1]
-		if last != "]" {
-			return nil, fmt.Errorf("TypeTerm must end with matching ']'")
-		}
-		toks = toks[:len(toks)-1]
-
-		var nullable bool
-		if toks[0] == "nullable" {
-			nullable = true
-			toks = toks[1:]
+var schemaToSchemaCmd = cli.Command{
+	Name: "to-schema",
+	Action: func(c *cli.Context) error {
+		if !c.Args().Present() {
+			return fmt.Errorf("must specify schema file to read")
 		}
 
-		subtype, err := parseTypeTerm(toks)
+		fi, err := os.Open(c.Args().First())
 		if err != nil {
-			return nil, err
+			return err
 		}
+		defer fi.Close()
 
-		return &TypeList{
-			ValueType:     subtype,
-			ValueNullable: nullable,
-		}, nil
-	case "{":
-		if len(toks) < 5 {
-			// not a great error message, should more clearly tell user
-			// what is actually missing
-			return nil, fmt.Errorf("map TypeTerms must be at least 5 tokens")
-		}
-
-		if toks[len(toks)-1] != "}" {
-			return nil, fmt.Errorf("map TypeTerm must end with matching '}'")
-		}
-
-		typeName := toks[1]
-		if toks[2] != ":" {
-			return nil, fmt.Errorf("expected ':' between map key type and value type")
-		}
-
-		valTermStart := 3
-		var nullable bool
-		if toks[3] == "nullable" {
-			nullable = true
-			valTermStart++
-		}
-
-		valt, err := parseTypeTerm(toks[valTermStart : len(toks)-1])
+		s := bufio.NewScanner(fi)
+		sc, err := parser.ParseSchema(s)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		return &TypeMap{
-			KeyType:       typeName,
-			ValueType:     valt,
-			ValueNullable: nullable,
-		}, nil
-	case "&":
-		toks = toks[1:]
-
-		linktype, err := parseTypeTerm(toks)
-		if err != nil {
-			return nil, err
+		if err := schema.ExportIpldSchema(sc, os.Stdout); err != nil {
+			panic(err)
 		}
 
-		return &TypeLink{
-			ValueType: linktype,
-		}, nil
-	default:
-		if len(toks) == 1 {
-			return NamedType(toks[0]), nil
-		}
-		fmt.Println("bad bad bad: ", toks[0])
-		fmt.Println("Full line: ")
-		fmt.Println(toks)
-		panic("cant deal")
-	}
-}
-
-func parseStructRepr(line []string, s *bufio.Scanner, freps map[string]SRMFieldDetails) (StructRepresentation, error) {
-	if len(line) < 3 {
-		return nil, fmt.Errorf("no representation kind given")
-	}
-
-	kind := line[2]
-	switch kind {
-	case "tuple":
-		if len(freps) > 0 {
-			return nil, fmt.Errorf("tuple struct representation cannot have field details")
-		}
-		if len(line) == 4 {
-			return nil, fmt.Errorf("cant yet handle detailed tuple representation")
-		}
-
-		return &StructRepresentation_Tuple{}, nil
-	case "map":
-		if len(line) > 3 {
-			return nil, fmt.Errorf("unexpected tokens after 'representation map'")
-		}
-
-		return &StructRepresentation_Map{Fields: freps}, nil
-	default:
-		return nil, fmt.Errorf("unrecognized struct representation: %s", kind)
-	}
-}
-
-func ParseSchema(s *bufio.Scanner) (SchemaMap, error) {
-	sm := make(SchemaMap)
-	for s.Scan() {
-		toks := tokens(s.Text())
-		if len(toks) == 0 {
-			continue
-		}
-
-		switch toks[0] {
-		case "type":
-			name, t, err := parseType(toks, s)
-			if err != nil {
-				fmt.Println("failed to parse line: ")
-				fmt.Println(s.Text())
-				fmt.Printf("%q\n", toks)
-				return nil, err
-			}
-			sm[name] = t
-		default:
-			return nil, fmt.Errorf("unexpected token: %q", toks[0])
-		}
-	}
-	return sm, nil
+		return nil
+	},
 }
 
 func main() {
-	//fmt.Printf("%q\n", tokens("bar [Int] (implicit \"cat\")"))
-	//return
-	/*
-			testval := `
-		type FooBar struct {
-		  cat CatType
-		  bar [Int]
-		  baz &Whatever
-		} representation tuple
-		`
-	*/
-
-	fi, err := os.Open("schema-schema.ipldsch")
-	if err != nil {
-		panic(err)
-	}
-	defer fi.Close()
-
-	s := bufio.NewScanner(fi)
-	schema, err := ParseSchema(s)
-	if err != nil {
-		panic(err)
+	app := cli.NewApp()
+	app.Commands = []cli.Command{
+		genGoCmd,
+		schemaToJsonCmd,
+		schemaToSchemaCmd,
 	}
 
-	fmt.Println(schema)
-	out, err := json.MarshalIndent(schema, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(string(out))
-
-	/*
-		outfi, err := os.Create("output.go")
-		if err != nil {
-			panic(err)
-		}
-		defer outfi.Close()
-
-		if err := GolangCodeGen(schema, outfi); err != nil {
-			panic(err)
-		}
-	*/
-	if err := ExportIpldSchema(schema, os.Stdout); err != nil {
-		panic(err)
-	}
-}
-
-/// SEPARATE FILE
-
-func ExportIpldSchema(sm SchemaMap, w io.Writer) error {
-	var types []string
-	for tname := range sm {
-		types = append(types, tname)
-	}
-
-	sort.Strings(types)
-
-	for _, tname := range types {
-		t := sm[tname]
-		fmt.Fprintf(w, "type %s %s\n\n", tname, t.TypeDecl())
-	}
-
-	return nil
-}
-
-/// SEPARATE FILE
-
-// in reality, the 'right' way to do this is to probably use the golang ast packages
-func GolangCodeGen(sm SchemaMap, w io.Writer) error {
-	var types []string
-	for tname := range sm {
-		types = append(types, tname)
-	}
-
-	sort.Strings(types)
-	fmt.Fprintf(w, "package main\n\n")
-
-	for _, tname := range types {
-		t := sm[tname]
-		tname := strings.Title(tname)
-		switch t := t.(type) {
-		case *TypeStruct:
-			fmt.Fprintf(w, "type %s struct {\n", tname)
-			for fname, f := range t.Fields {
-				t := typeToGoType(f.Type.(Type)) // TODO: should TypeTerm just be type? it seems like it wants that
-				if f.Nullable {
-					t = "*" + t
-				}
-				fname := strings.Title(fname)
-				fmt.Fprintf(w, "\t%s %s\n", fname, t)
-			}
-			fmt.Fprintf(w, "}\n\n")
-		case *TypeEnum:
-			enumTag := "_Enum" + tname
-			fmt.Fprintf(w, "type %s interface {\n\t%s()\n}\n", tname, enumTag)
-			for mem := range t.Members {
-				enumelem := tname + mem
-				fmt.Fprintf(w, "type %s struct{}\n", enumelem)
-				fmt.Fprintf(w, "func (_ %s) %s() {}\n", enumelem, enumTag)
-				fmt.Fprintf(w, "var _ %s = (*%s)(nil)\n", tname, enumelem)
-			}
-		case *TypeUnion:
-			fmt.Fprintf(w, "type %s interface {}\n", tname)
-			/*
-				switch rep := t.Representation.(type) {
-
-				}
-			*/
-		default:
-			fmt.Fprintf(w, "type %s %s\n\n", tname, typeToGoType(t))
-		}
-	}
-	return nil
-}
-
-func typeToGoType(t Type) string {
-	switch t := t.(type) {
-	case *TypeBool:
-		return "bool"
-	case *TypeString:
-		return "string"
-	case *TypeBytes:
-		return "[]byte"
-	case *TypeInt:
-		return "int"
-	case *TypeFloat:
-		return "float64"
-
-	case *TypeLink:
-		return fmt.Sprintf("cid.Cid /* IPLD: %s */", typeToGoType(t))
-
-	case *TypeList:
-		subtype := typeToGoType(t.ValueType.(Type)) // TypeTerm really wants to be a Type
-		if t.ValueNullable {
-			subtype = "*" + subtype
-		}
-		return fmt.Sprintf("[]%s", subtype)
-
-	case *TypeEnum:
-		panic("no")
-	case *TypeUnion:
-		panic("no")
-	case *TypeMap:
-		val := typeToGoType(t.ValueType.(Type))
-		if t.ValueNullable {
-			val = "*" + val
-		}
-		return fmt.Sprintf("map[%s]%s", typeToGoType(NamedType(t.KeyType)), val)
-	case NamedType:
-		return string(t)
-	default:
-		fmt.Printf("BAD TYPE: %T\n", t)
-		panic("unrecognized type")
-	}
+	app.RunAndExitOnError()
 }
