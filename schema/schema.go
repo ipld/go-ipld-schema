@@ -2,20 +2,23 @@ package schema
 
 import (
 	"fmt"
+	"strings"
 )
 
 type TypeStruct struct {
-	Fields         map[string]*StructField
-	Representation StructRepresentation
+	Fields         map[string]*StructField `json:"fields"`
+	Kind           string                  `json:"kind"`
+	Representation *StructRepresentation   `json:"representation,omitempty"`
 }
 
 func (t *TypeStruct) TypeDecl() string {
 	term := "struct {\n"
 
 	fieldInfo := make(map[string]SRMFieldDetails)
-	if srep, ok := t.Representation.(*StructRepresentation_Map); ok {
-		fieldInfo = srep.Fields
+	if t.Representation != nil && t.Representation.Map != nil {
+		fieldInfo = t.Representation.Map.Fields
 	}
+
 	for fname, f := range t.Fields {
 		term += fmt.Sprintf("\t%s", fname)
 		if f.Optional {
@@ -27,16 +30,28 @@ func (t *TypeStruct) TypeDecl() string {
 		term += " "
 		term += TypeTermDecl(f.Type)
 
-		if inf, ok := fieldInfo[fname]; ok && (inf.Alias != "" || inf.Default != nil) {
+		if inf, ok := fieldInfo[fname]; ok && (inf.Rename != "" || inf.Implicit != nil) {
 			term += " ("
-			if inf.Alias != "" {
-				term += fmt.Sprintf("rename \"%s\"", inf.Alias)
+			if inf.Rename != "" {
+				term += fmt.Sprintf("rename \"%s\"", inf.Rename)
 			}
-			if inf.Default != nil {
-				if inf.Alias != "" {
+			if inf.Implicit != nil {
+				if inf.Rename != "" {
 					term += ", "
 				}
-				term += fmt.Sprintf("implicit %q", inf.Default)
+				var implicit interface{}
+				switch v := inf.Implicit.(type) {
+				case string:
+					implicit = "\"" + v + "\""
+				default:
+					implicit = v
+				}
+				// implicits are always quoted and coerced when parsed
+				impl := fmt.Sprintf("%v", implicit)
+				if impl[0] != '"' || impl[len(impl)-1] != '"' {
+					impl = "\"" + impl + "\""
+				}
+				term += fmt.Sprintf("implicit %s", impl)
 			}
 			term += ")"
 		}
@@ -44,28 +59,57 @@ func (t *TypeStruct) TypeDecl() string {
 	}
 	term += "}"
 	if t.Representation != nil {
-		switch t.Representation.(type) {
-		case *StructRepresentation_Map:
-			term += " representation map"
-		case *StructRepresentation_Tuple:
+		// ignore t.Representation.Map
+		if t.Representation.Tuple != nil {
 			term += " representation tuple"
+			if t.Representation.Tuple.FieldOrder != nil {
+				term += fmt.Sprintf(" {\n\tfieldOrder [%s]\n}", strings.Join(t.Representation.Tuple.FieldOrder, ", "))
+			}
+		} else if t.Representation.StringPairs != nil {
+			term += stringPairsRepresentationDecl(t.Representation.StringPairs)
+		} else if t.Representation.StringJoin != nil {
+			term += fmt.Sprintf(" representation stringjoin {\n\tjoin \"%s\"\n}", t.Representation.StringJoin.Join)
+		} else if t.Representation.ListPairs != nil {
+			term += " representation listpairs"
 		}
 	}
 	return term
 }
 
 func (t *TypeBool) TypeDecl() string {
-	return "Bool"
+	return "bool"
 }
 func (t *TypeInt) TypeDecl() string {
-	return "Int"
+	return "int"
 }
 func (t *TypeFloat) TypeDecl() string {
-	return "Float"
+	return "float"
 }
 func (t *TypeMap) TypeDecl() string {
-	return fmt.Sprintf("{%s:%s}", t.KeyType, TypeTermDecl(t.ValueType))
+	tval := TypeTermDecl(t.ValueType)
+	if t.ValueNullable {
+		tval = "nullable " + tval
+	}
+
+	decl := fmt.Sprintf("{%s:%s}", t.KeyType, tval)
+
+	if t.Representation != nil {
+		if t.Representation.StringPairs != nil {
+			decl += stringPairsRepresentationDecl(t.Representation.StringPairs)
+		}
+		if t.Representation.ListPairs != nil {
+			decl += " representation listpairs"
+		}
+	}
+	return decl
 }
+
+func stringPairsRepresentationDecl(repr *Representation_StringPairs) string {
+	return fmt.Sprintf(" representation stringpairs {\n\tinnerDelim \"%s\"\n\tentryDelim \"%s\"\n}",
+		repr.InnerDelim,
+		repr.EntryDelim)
+}
+
 func (t *TypeList) TypeDecl() string {
 	tval := TypeTermDecl(t.ValueType)
 	if t.ValueNullable {
@@ -75,31 +119,37 @@ func (t *TypeList) TypeDecl() string {
 }
 func (t *TypeUnion) TypeDecl() string {
 	term := "union {\n"
-	switch rep := t.Representation.(type) {
-	case *UnionRepresentation_Envelope:
-		panic("TODO")
-	case UnionRepresentation_Keyed:
-		for k, v := range rep {
-			term += fmt.Sprintf("\t| %s %s\n", v, k)
-		}
+	if t.Representation != nil {
+		if t.Representation.Envelope != nil {
+			for k, v := range t.Representation.Envelope.DiscriminantTable {
+				term += fmt.Sprintf("\t| %s \"%s\"\n", v, k)
+			}
+			term += "} representation envelope {\n"
+			term += fmt.Sprintf("\tdiscriminantKey \"%s\"\n\tcontentKey \"%s\"\n}",
+				t.Representation.Envelope.DiscriminantKey,
+				t.Representation.Envelope.ContentKey)
+		} else if t.Representation.Keyed != nil {
+			for k, v := range *(t.Representation.Keyed) {
+				term += fmt.Sprintf("\t| %s \"%s\"\n", v, k)
+			}
+			term += "} representation keyed"
+		} else if t.Representation.Kinded != nil {
+			for k, v := range *(t.Representation.Kinded) {
+				term += fmt.Sprintf("\t| %s %s\n", v, k)
+			}
 
-		term += "} representation keyed"
-	case UnionRepresentation_Kinded:
-		for k, v := range rep {
-			term += fmt.Sprintf("\t| %s %s\n", v, k)
-		}
+			term += "} representation kinded"
+		} else if t.Representation.Inline != nil {
+			for k, v := range t.Representation.Inline.DiscriminantTable {
+				term += fmt.Sprintf("\t| %s %q\n", v, k)
+			}
 
-		term += "} representation kinded"
-	case *UnionRepresentation_Inline:
-		for k, v := range rep.DiscriminantTable {
-			term += fmt.Sprintf("\t| %s %q\n", v, k)
+			term += fmt.Sprintf("} representation inline {\n\tdiscriminantKey \"%s\"\n}",
+				t.Representation.Inline.DiscriminantKey)
+		} else {
+			panic(fmt.Sprintf("no representation type specified for union"))
 		}
-
-		term += fmt.Sprintf("} representation inline \"%s\"", rep.DiscriminatorKey)
-	default:
-		panic(fmt.Sprintf("unrecognized type: %T", t.Representation))
 	}
-
 	return term
 }
 
@@ -113,15 +163,18 @@ func (t *TypeEnum) TypeDecl() string {
 }
 
 func (t *TypeLink) TypeDecl() string {
-	return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
+	if t.ValueType != nil {
+		return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
+	}
+	return "link"
 }
 
 func (t *TypeString) TypeDecl() string {
-	return "String"
+	return "string"
 }
 
 func (t *TypeBytes) TypeDecl() string {
-	return "Bytes"
+	return "bytes"
 }
 
 func (t NamedType) TypeDecl() string {
@@ -139,70 +192,132 @@ func TypeTermDecl(t TypeTerm) string {
 
 type NamedType string
 
-type StructRepresentation interface{}
+func SimpleType(kind string) Type {
+	switch kind {
+	case "bool":
+		return &TypeBool{kind}
+	case "bytes":
+		return &TypeBytes{kind}
+	case "float":
+		return &TypeFloat{kind}
+	case "int":
+		return &TypeInt{kind}
+	case "link":
+		return &TypeLink{kind, nil}
+	case "string":
+		return &TypeString{kind}
+	}
+	return nil
+}
+
+type StructRepresentation struct {
+	Map         *StructRepresentation_Map        `json:"map,omitempty"`
+	Tuple       *StructRepresentation_Tuple      `json:"tuple,omitempty"`
+	StringPairs *Representation_StringPairs      `json:"stringpairs,omitempty"`
+	StringJoin  *StructRepresentation_StringJoin `json:"stringjoin,omitempty"`
+	ListPairs   *Representation_ListPairs        `json:"listpairs,omitempty"`
+}
 
 type StructRepresentation_Map struct {
-	Fields map[string]SRMFieldDetails
+	Fields map[string]SRMFieldDetails `json:"fields,omitempty"`
 }
 
 type StructRepresentation_Tuple struct {
-	FieldOrder []string
+	FieldOrder []string `json:"fieldOrder,omitempty"`
+}
+
+// shared by Map and String
+type Representation_StringPairs struct {
+	EntryDelim string `json:"entryDelim"`
+	InnerDelim string `json:"innerDelim"`
+}
+
+type StructRepresentation_StringJoin struct {
+	FieldOrder []string `json:"fieldOrder,omitempty"`
+	Join       string   `json:"join,omitempty"`
+}
+
+// shared by Map and String
+type Representation_ListPairs struct {
+	FieldOrder []string `json:"fieldOrder,omitempty"`
 }
 
 type SRMFieldDetails struct {
-	Alias   string
-	Default interface{}
+	Implicit interface{} `json:"implicit,omitempty"`
+	Rename   string      `json:"rename,omitempty"`
 }
 
 type StructField struct {
-	Type     TypeTerm
-	Optional bool
-	Nullable bool
+	Nullable bool     `json:"nullable,omitempty"`
+	Optional bool     `json:"optional,omitempty"`
+	Type     TypeTerm `json:"type"`
 }
 
 type TypeTerm interface{}
 
-type TypeBool struct{}
-type TypeString struct{}
-type TypeBytes struct{}
-type TypeInt struct{}
-type TypeFloat struct{}
+type TypeBool struct {
+	Kind string `json:"kind"`
+}
+
+type TypeString struct {
+	Kind string `json:"kind"`
+}
+
+type TypeBytes struct {
+	Kind string `json:"kind"`
+}
+
+type TypeInt struct {
+	Kind string `json:"kind"`
+}
+
+type TypeFloat struct {
+	Kind string `json:"kind"`
+}
 
 type TypeLink struct {
-	ValueType TypeTerm
+	Kind      string   `json:"kind"`
+	ValueType TypeTerm `json:"valueType,omitempty"`
 }
 
 type TypeList struct {
-	ValueType     TypeTerm
-	ValueNullable bool
+	Kind          string   `json:"kind"`
+	ValueNullable bool     `json:"valueNullable,omitempty"`
+	ValueType     TypeTerm `json:"valueType,omitempty"`
 }
 
 type TypeEnum struct {
-	Members map[string]struct{}
+	Kind    string               `json:"kind"`
+	Members map[string]*struct{} `json:"members"`
 }
 
 type TypeUnion struct {
-	Representation UnionRepresentation
+	Kind           string               `json:"kind"`
+	Representation *UnionRepresentation `json:"representation,omitempty"`
 }
 
-type UnionRepresentation interface{}
+type UnionRepresentation struct {
+	Keyed    *UnionRepresentation_Keyed    `json:"keyed,omitempty"`
+	Kinded   *UnionRepresentation_Kinded   `json:"kinded,omitempty"`
+	Envelope *UnionRepresentation_Envelope `json:"envelope,omitempty"`
+	Inline   *UnionRepresentation_Inline   `json:"inline,omitempty"`
+}
 
-type RepresentationKind string
 type TypeName string
-
-type UnionRepresentation_Kinded map[RepresentationKind]TypeName
-
 type UnionRepresentation_Keyed map[string]TypeName
 
+type RepresentationKind string
+type UnionRepresentation_Kinded map[RepresentationKind]TypeName
+
 type UnionRepresentation_Envelope struct {
-	DiscriminatorKey  string
-	ContentKey        string
-	DiscriminantTable map[string]TypeName
+	ContentKey        string              `json:"contentKey"`
+	DiscriminantKey   string              `json:"discriminantKey"`
+	DiscriminantTable map[string]TypeName `json:"discriminantTable"`
 }
 
 type UnionRepresentation_Inline struct {
-	DiscriminatorKey  string
-	DiscriminantTable map[string]TypeName
+	DiscriminantKey   string              `json:"discriminantKey"`
+	DiscriminantTable map[string]TypeName `json:"discriminantTable"`
 }
 
 type SchemaMap map[string]Type
@@ -212,7 +327,17 @@ type Type interface {
 }
 
 type TypeMap struct {
-	KeyType       string
-	ValueType     TypeTerm
-	ValueNullable bool
+	KeyType        string             `json:"keyType"`
+	Kind           string             `json:"kind"`
+	Representation *MapRepresentation `json:"representation,omitempty"`
+	ValueNullable  bool               `json:"valueNullable,omitempty"`
+	ValueType      TypeTerm           `json:"valueType"`
 }
+
+type MapRepresentation struct {
+	Map         *MapRepresentation_Map      `json:"map,omitempty"`
+	StringPairs *Representation_StringPairs `json:"stringpairs,omitempty"`
+	ListPairs   *Representation_ListPairs   `json:"listpairs,omitempty"`
+}
+
+type MapRepresentation_Map struct{}

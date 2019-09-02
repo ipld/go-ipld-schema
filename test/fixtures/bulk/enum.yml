@@ -1,0 +1,43 @@
+schema: |
+  type SimpleEnum enum {
+    | "foo"
+    | "bar"
+    | "baz"
+  }
+expected: |
+  {
+    "SimpleEnum": {
+      "kind": "enum",
+      "members": {
+        "foo": null,
+        "bar": null,
+        "baz": null
+      }
+    }
+  }
+blocks:
+  - actual: |
+      "foo"
+    expected: |
+      "foo"
+  - actual: |
+      "bar"
+    expected: |
+      "bar"
+  - actual: |
+      "baz"
+    expected: |
+      "baz"
+badBlocks:
+  - |
+    "fooz"
+  - |
+    true
+  - |
+    100
+  - |
+    { }
+  - |
+    { "foo": true }
+  - |
+    []

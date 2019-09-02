@@ -8,7 +8,7 @@ import (
 
 	"github.com/urfave/cli"
 
-	"github.com/whyrusleeping/ipld-schema/gen-go"
+	gengo "github.com/whyrusleeping/ipld-schema/gen-go"
 	"github.com/whyrusleeping/ipld-schema/parser"
 	"github.com/whyrusleeping/ipld-schema/schema"
 )
@@ -59,7 +59,10 @@ var schemaToJsonCmd = cli.Command{
 			return err
 		}
 
-		out, err := json.MarshalIndent(sc, "", "\t")
+		// JSON schema types should be nested within a "schema" key
+		scm := make(map[string]interface{})
+		scm["schema"] = sc
+		out, err := json.MarshalIndent(scm, "", "\t")
 		if err != nil {
 			panic(err)
 		}
