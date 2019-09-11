@@ -121,11 +121,6 @@ func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
 			return tname, SimpleType(ttype), nil
 		}
 		return "", nil, fmt.Errorf("%s declaration cannot be followed by additional tokens", ttype)
-
-		if len(tline) != 4 || tline[3] != "{" {
-			return "", nil, fmt.Errorf("enum declaration must end in an open brace")
-		}
-		t, err = parseEnum(s)
 	case "{":
 		t, err = parseMapType(tline, s)
 		if err != nil {
@@ -162,7 +157,7 @@ func parseEnum(s *bufio.Scanner) (*TypeEnum, error) {
 }
 
 func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
-	unionVals := make(map[string]string)
+	unionVals := make(map[string]Type)
 	for s.Scan() {
 		toks := tokens(s.Text())
 		if len(toks) == 0 {
@@ -174,9 +169,13 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 			if len(toks) != 3 {
 				return nil, fmt.Errorf("must have three tokens in union entry")
 			}
-			typeName := toks[1]
 			key := toks[2]
-			unionVals[key] = typeName
+			if toks[1][0] == '&' {
+				unionVals[key] = tokenToLink(toks[1])
+			} else {
+				// TODO: validate characters
+				unionVals[key] = NamedType(toks[1])
+			}
 		case "}":
 			if len(toks) < 3 {
 				return nil, fmt.Errorf("union closing line must contain at least three tokens")
@@ -190,7 +189,7 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 			case "kinded":
 				rep := make(UnionRepresentation_Kinded)
 				for k, v := range unionVals {
-					rep[RepresentationKind(k)] = TypeName(v)
+					rep[RepresentationKind(k)] = v
 				}
 				repr := &UnionRepresentation{Kinded: &rep}
 				return &TypeUnion{Kind: "union", Representation: repr}, nil
@@ -203,16 +202,16 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 					return nil, err
 				}
 
-				urep.DiscriminantTable = make(map[string]TypeName)
+				urep.DiscriminantTable = make(map[string]Type)
 				for k, v := range unionVals {
-					urep.DiscriminantTable[k] = TypeName(v)
+					urep.DiscriminantTable[k] = v
 				}
 
 				return &TypeUnion{Kind: "union", Representation: &UnionRepresentation{Inline: urep}}, nil
 			case "keyed":
 				rep := make(UnionRepresentation_Keyed)
 				for k, v := range unionVals {
-					rep[k] = TypeName(v)
+					rep[k] = v
 				}
 				return &TypeUnion{Kind: "union", Representation: &UnionRepresentation{Keyed: &rep}}, nil
 			case "envelope":
@@ -224,9 +223,9 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 					return nil, err
 				}
 
-				urep.DiscriminantTable = make(map[string]TypeName)
+				urep.DiscriminantTable = make(map[string]Type)
 				for k, v := range unionVals {
-					urep.DiscriminantTable[k] = TypeName(v)
+					urep.DiscriminantTable[k] = v
 				}
 
 				return &TypeUnion{Kind: "union", Representation: &UnionRepresentation{Envelope: urep}}, nil
@@ -486,6 +485,18 @@ func parseTypeTerm(toks []string) (Type, error) {
 		return nil, fmt.Errorf("no tokens for type term")
 	}
 
+	if toks[0][0] == '&' {
+		if len(toks) != 1 {
+			return nil, fmt.Errorf("extraneous tokens after &Link declaration")
+		}
+
+		if len(toks[0]) == 1 {
+			return nil, fmt.Errorf("invalid link type, '&' must be directly followed by an expected type string")
+		}
+
+		return tokenToLink(toks[0]), nil
+	}
+
 	switch toks[0] {
 	case "[":
 		toks = toks[1:]
@@ -514,18 +525,6 @@ func parseTypeTerm(toks []string) (Type, error) {
 		}, nil
 	case "{":
 		return parseMapTypeTerm(toks)
-	case "&":
-		toks = toks[1:]
-
-		linktype, err := parseTypeTerm(toks)
-		if err != nil {
-			return nil, err
-		}
-
-		return &TypeLink{
-			Kind:      "link",
-			ValueType: linktype,
-		}, nil
 	default:
 		if len(toks) == 1 {
 			return NamedType(toks[0]), nil
@@ -618,6 +617,19 @@ func parseMapTypeTerm(toks []string) (*TypeMap, error) {
 		ValueType:     valueType,
 		ValueNullable: nullable,
 	}, nil
+}
+
+func tokenToLink(tok string) *TypeLink {
+	linktype := NamedType(tok[1:])
+
+	if linktype == "Any" {
+		return &TypeLink{Kind: "link"}
+	}
+
+	return &TypeLink{
+		Kind:         "link",
+		ExpectedType: linktype,
+	}
 }
 
 func parseStringPairsRepresentation(s *bufio.Scanner) (innerDelim string, entryDelim string, err error) {
