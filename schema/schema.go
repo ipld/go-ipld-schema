@@ -163,10 +163,10 @@ func (t *TypeEnum) TypeDecl() string {
 }
 
 func (t *TypeLink) TypeDecl() string {
-	if t.ValueType != nil {
-		return fmt.Sprintf("&%s", TypeTermDecl(t.ValueType))
+	if t.ExpectedType != nil {
+		return fmt.Sprintf("&%s", TypeTermDecl(t.ExpectedType))
 	}
-	return "link"
+	return "&Any"
 }
 
 func (t *TypeString) TypeDecl() string {
@@ -203,7 +203,7 @@ func SimpleType(kind string) Type {
 	case "int":
 		return &TypeInt{kind}
 	case "link":
-		return &TypeLink{kind, nil}
+		return &TypeLink{nil, kind}
 	case "string":
 		return &TypeString{kind}
 	}
@@ -276,8 +276,8 @@ type TypeFloat struct {
 }
 
 type TypeLink struct {
-	Kind      string   `json:"kind"`
-	ValueType TypeTerm `json:"valueType,omitempty"`
+	ExpectedType TypeTerm `json:"expectedType,omitempty"`
+	Kind         string   `json:"kind"`
 }
 
 type TypeList struct {
@@ -304,20 +304,20 @@ type UnionRepresentation struct {
 }
 
 type TypeName string
-type UnionRepresentation_Keyed map[string]TypeName
+type UnionRepresentation_Keyed map[string]Type
 
 type RepresentationKind string
-type UnionRepresentation_Kinded map[RepresentationKind]TypeName
+type UnionRepresentation_Kinded map[RepresentationKind]Type
 
 type UnionRepresentation_Envelope struct {
-	ContentKey        string              `json:"contentKey"`
-	DiscriminantKey   string              `json:"discriminantKey"`
-	DiscriminantTable map[string]TypeName `json:"discriminantTable"`
+	ContentKey        string          `json:"contentKey"`
+	DiscriminantKey   string          `json:"discriminantKey"`
+	DiscriminantTable map[string]Type `json:"discriminantTable"`
 }
 
 type UnionRepresentation_Inline struct {
-	DiscriminantKey   string              `json:"discriminantKey"`
-	DiscriminantTable map[string]TypeName `json:"discriminantTable"`
+	DiscriminantKey   string          `json:"discriminantKey"`
+	DiscriminantTable map[string]Type `json:"discriminantTable"`
 }
 
 type SchemaMap map[string]Type
