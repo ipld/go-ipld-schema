@@ -229,6 +229,22 @@ func parseUnion(s *bufio.Scanner) (*TypeUnion, error) {
 				}
 
 				return &TypeUnion{Kind: "union", Representation: &UnionRepresentation{Envelope: urep}}, nil
+			case "byteprefix":
+				rep := make(UnionRepresentation_BytePrefix)
+				for k, v := range unionVals {
+					nt, ok := v.(NamedType)
+					if !ok {
+						return nil, fmt.Errorf("'byteprefix' union representation may only contain named types (%v)", v)
+					}
+					i, err := strconv.ParseInt(string(k), 10, 64)
+					if err != nil {
+						return nil, fmt.Errorf("'byteprefix' union representation may only use int discriminators (%v)", v)
+					}
+					rep[nt] = int(i)
+				}
+				return &TypeUnion{Kind: "union", Representation: &UnionRepresentation{BytePrefix: &rep}}, nil
+			default:
+				return nil, fmt.Errorf("unknown union representation '%s'", toks[2])
 			}
 
 		}

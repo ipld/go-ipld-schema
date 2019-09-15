@@ -146,6 +146,12 @@ func (t *TypeUnion) TypeDecl() string {
 
 			term += fmt.Sprintf("} representation inline {\n\tdiscriminantKey \"%s\"\n}",
 				t.Representation.Inline.DiscriminantKey)
+		} else if t.Representation.BytePrefix != nil {
+			for k, v := range *(t.Representation.BytePrefix) {
+				term += fmt.Sprintf("\t| %s %d\n", k, v)
+			}
+
+			term += "} representation byteprefix"
 		} else {
 			panic(fmt.Sprintf("no representation type specified for union"))
 		}
@@ -297,10 +303,11 @@ type TypeUnion struct {
 }
 
 type UnionRepresentation struct {
-	Keyed    *UnionRepresentation_Keyed    `json:"keyed,omitempty"`
-	Kinded   *UnionRepresentation_Kinded   `json:"kinded,omitempty"`
-	Envelope *UnionRepresentation_Envelope `json:"envelope,omitempty"`
-	Inline   *UnionRepresentation_Inline   `json:"inline,omitempty"`
+	Keyed      *UnionRepresentation_Keyed      `json:"keyed,omitempty"`
+	Kinded     *UnionRepresentation_Kinded     `json:"kinded,omitempty"`
+	Envelope   *UnionRepresentation_Envelope   `json:"envelope,omitempty"`
+	Inline     *UnionRepresentation_Inline     `json:"inline,omitempty"`
+	BytePrefix *UnionRepresentation_BytePrefix `json:"byteprefix,omitempty"`
 }
 
 type TypeName string
@@ -314,6 +321,8 @@ type UnionRepresentation_Envelope struct {
 	DiscriminantKey   string          `json:"discriminantKey"`
 	DiscriminantTable map[string]Type `json:"discriminantTable"`
 }
+
+type UnionRepresentation_BytePrefix map[NamedType]int
 
 type UnionRepresentation_Inline struct {
 	DiscriminantKey   string          `json:"discriminantKey"`
