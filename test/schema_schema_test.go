@@ -22,7 +22,7 @@ func TestSchemaSchema(t *testing.T) {
 }
 
 func loadExpected(t *testing.T) map[string]interface{} {
-	var expected map[string]map[string]interface{}
+	var expected map[string]interface{}
 
 	file, err := ioutil.ReadFile("./fixtures/schema-schema.ipldsch.json")
 	assert.NoError(t, err)
@@ -30,7 +30,7 @@ func loadExpected(t *testing.T) map[string]interface{} {
 	err = json.Unmarshal(file, &expected)
 	assert.NoError(t, err)
 
-	return expected["schema"]
+	return expected
 }
 
 func loadActual(t *testing.T) map[string]interface{} {

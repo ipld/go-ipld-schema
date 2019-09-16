@@ -6,16 +6,16 @@ import (
 	"sort"
 )
 
-func ExportIpldSchema(sm SchemaMap, w io.Writer) error {
+func ExportIpldSchema(sch *Schema, w io.Writer) error {
 	var types []string
-	for tname := range sm {
+	for tname := range sch.SchemaMap {
 		types = append(types, tname)
 	}
 
 	sort.Strings(types)
 
 	for _, tname := range types {
-		t := sm[tname]
+		t := sch.SchemaMap[tname]
 		fmt.Fprintf(w, "type %s %s\n\n", tname, t.TypeDecl())
 	}
 

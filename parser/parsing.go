@@ -826,8 +826,9 @@ func parseStructRepr(line []string, s *bufio.Scanner, freps map[string]SRMFieldD
 	}
 }
 
-func ParseSchema(s *bufio.Scanner) (SchemaMap, error) {
-	sm := make(SchemaMap)
+func ParseSchema(s *bufio.Scanner) (*Schema, error) {
+	schema := &Schema{SchemaMap: make(SchemaMap)}
+
 	for s.Scan() {
 		toks := tokens(s.Text())
 		if len(toks) == 0 {
@@ -843,10 +844,10 @@ func ParseSchema(s *bufio.Scanner) (SchemaMap, error) {
 				fmt.Printf("%q\n", toks)
 				return nil, err
 			}
-			sm[name] = t
+			schema.SchemaMap[name] = t
 		default:
 			return nil, fmt.Errorf("unexpected token: %q", toks[0])
 		}
 	}
-	return sm, nil
+	return schema, nil
 }

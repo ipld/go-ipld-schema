@@ -10,9 +10,9 @@ import (
 )
 
 // in reality, the 'right' way to do this is to probably use the golang ast packages
-func GolangCodeGen(sm SchemaMap, w io.Writer) error {
+func GolangCodeGen(schema *Schema, w io.Writer) error {
 	var types []string
-	for tname := range sm {
+	for tname := range schema.SchemaMap {
 		types = append(types, tname)
 	}
 
@@ -20,7 +20,7 @@ func GolangCodeGen(sm SchemaMap, w io.Writer) error {
 	fmt.Fprintf(w, "package main\n\n")
 
 	for _, tname := range types {
-		t := sm[tname]
+		t := schema.SchemaMap[tname]
 		tname := strings.Title(tname)
 		switch t := t.(type) {
 		case *TypeStruct:
@@ -71,7 +71,11 @@ func typeToGoType(t Type) string {
 		return "float64"
 
 	case *TypeLink:
-		return fmt.Sprintf("cid.Cid /* IPLD: %s */", typeToGoType(t))
+		et := "Any"
+		if t.ExpectedType != nil {
+			et = fmt.Sprintf("%s", t.ExpectedType)
+		}
+		return fmt.Sprintf("cid.Cid /* IPLD: %s */", et)
 
 	case *TypeList:
 		subtype := typeToGoType(t.ValueType.(Type)) // TypeTerm really wants to be a Type

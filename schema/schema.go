@@ -37,7 +37,7 @@ func (t *TypeStruct) TypeDecl() string {
 			}
 			if inf.Implicit != nil {
 				if inf.Rename != "" {
-					term += ", "
+					term += " "
 				}
 				var implicit interface{}
 				switch v := inf.Implicit.(type) {
@@ -63,12 +63,16 @@ func (t *TypeStruct) TypeDecl() string {
 		if t.Representation.Tuple != nil {
 			term += " representation tuple"
 			if t.Representation.Tuple.FieldOrder != nil {
-				term += fmt.Sprintf(" {\n\tfieldOrder [%s]\n}", strings.Join(t.Representation.Tuple.FieldOrder, ", "))
+				term += fmt.Sprintf(" {\n\tfieldOrder [\"%s\"]\n}", strings.Join(t.Representation.Tuple.FieldOrder, "\", \""))
 			}
 		} else if t.Representation.StringPairs != nil {
 			term += stringPairsRepresentationDecl(t.Representation.StringPairs)
 		} else if t.Representation.StringJoin != nil {
-			term += fmt.Sprintf(" representation stringjoin {\n\tjoin \"%s\"\n}", t.Representation.StringJoin.Join)
+			term += fmt.Sprintf(" representation stringjoin {\n\tjoin \"%s\"\n", t.Representation.StringJoin.Join)
+			if t.Representation.StringJoin.FieldOrder != nil {
+				term += fmt.Sprintf("\tfieldOrder [\"%s\"]\n", strings.Join(t.Representation.StringJoin.FieldOrder, "\", \""))
+			}
+			term += "}"
 		} else if t.Representation.ListPairs != nil {
 			term += " representation listpairs"
 		}
@@ -122,7 +126,7 @@ func (t *TypeUnion) TypeDecl() string {
 	if t.Representation != nil {
 		if t.Representation.Envelope != nil {
 			for k, v := range t.Representation.Envelope.DiscriminantTable {
-				term += fmt.Sprintf("\t| %s \"%s\"\n", v, k)
+				term += fmt.Sprintf("\t| %s \"%s\"\n", TypeTermDecl(v), k)
 			}
 			term += "} representation envelope {\n"
 			term += fmt.Sprintf("\tdiscriminantKey \"%s\"\n\tcontentKey \"%s\"\n}",
@@ -130,25 +134,25 @@ func (t *TypeUnion) TypeDecl() string {
 				t.Representation.Envelope.ContentKey)
 		} else if t.Representation.Keyed != nil {
 			for k, v := range *(t.Representation.Keyed) {
-				term += fmt.Sprintf("\t| %s \"%s\"\n", v, k)
+				term += fmt.Sprintf("\t| %s \"%s\"\n", TypeTermDecl(v), k)
 			}
 			term += "} representation keyed"
 		} else if t.Representation.Kinded != nil {
 			for k, v := range *(t.Representation.Kinded) {
-				term += fmt.Sprintf("\t| %s %s\n", v, k)
+				term += fmt.Sprintf("\t| %s %s\n", TypeTermDecl(v), k)
 			}
 
 			term += "} representation kinded"
 		} else if t.Representation.Inline != nil {
 			for k, v := range t.Representation.Inline.DiscriminantTable {
-				term += fmt.Sprintf("\t| %s %q\n", v, k)
+				term += fmt.Sprintf("\t| %s %q\n", TypeTermDecl(v), k)
 			}
 
 			term += fmt.Sprintf("} representation inline {\n\tdiscriminantKey \"%s\"\n}",
 				t.Representation.Inline.DiscriminantKey)
 		} else if t.Representation.BytePrefix != nil {
 			for k, v := range *(t.Representation.BytePrefix) {
-				term += fmt.Sprintf("\t| %s %d\n", k, v)
+				term += fmt.Sprintf("\t| %s %d\n", TypeTermDecl(k), v)
 			}
 
 			term += "} representation byteprefix"
@@ -327,6 +331,10 @@ type UnionRepresentation_BytePrefix map[NamedType]int
 type UnionRepresentation_Inline struct {
 	DiscriminantKey   string          `json:"discriminantKey"`
 	DiscriminantTable map[string]Type `json:"discriminantTable"`
+}
+
+type Schema struct {
+	SchemaMap SchemaMap `json:"schema"`
 }
 
 type SchemaMap map[string]Type

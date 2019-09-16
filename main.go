@@ -9,8 +9,8 @@ import (
 	"github.com/urfave/cli"
 
 	gengo "github.com/whyrusleeping/ipld-schema/gen-go"
-	"github.com/whyrusleeping/ipld-schema/parser"
-	"github.com/whyrusleeping/ipld-schema/schema"
+	parser "github.com/whyrusleeping/ipld-schema/parser"
+	schema "github.com/whyrusleeping/ipld-schema/schema"
 )
 
 var genGoCmd = cli.Command{
@@ -27,12 +27,12 @@ var genGoCmd = cli.Command{
 		defer fi.Close()
 
 		s := bufio.NewScanner(fi)
-		sc, err := parser.ParseSchema(s)
+		sch, err := parser.ParseSchema(s)
 		if err != nil {
 			return err
 		}
 
-		if err := gengo.GolangCodeGen(sc, os.Stdout); err != nil {
+		if err := gengo.GolangCodeGen(sch, os.Stdout); err != nil {
 			return err
 		}
 
@@ -60,9 +60,7 @@ var schemaToJsonCmd = cli.Command{
 		}
 
 		// JSON schema types should be nested within a "schema" key
-		scm := make(map[string]interface{})
-		scm["schema"] = sc
-		out, err := json.MarshalIndent(scm, "", "\t")
+		out, err := json.MarshalIndent(sc, "", "\t")
 		if err != nil {
 			panic(err)
 		}
@@ -87,12 +85,12 @@ var schemaToSchemaCmd = cli.Command{
 		defer fi.Close()
 
 		s := bufio.NewScanner(fi)
-		sc, err := parser.ParseSchema(s)
+		sch, err := parser.ParseSchema(s)
 		if err != nil {
 			return err
 		}
 
-		if err := schema.ExportIpldSchema(sc, os.Stdout); err != nil {
+		if err := schema.ExportIpldSchema(sch, os.Stdout); err != nil {
 			panic(err)
 		}
 
