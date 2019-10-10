@@ -217,6 +217,10 @@ func (t NamedType) TypeDecl() string {
 	return string(t)
 }
 
+func (t *TypeCopy) TypeDecl() string {
+	return fmt.Sprintf(" = %s", t.FromType)
+}
+
 func TypeTermDecl(t TypeTerm) string {
 	switch t := t.(type) {
 	case Type:
@@ -379,3 +383,8 @@ type MapRepresentation struct {
 }
 
 type MapRepresentation_Map struct{}
+
+type TypeCopy struct {
+	FromType string `json:"fromType"`
+	Kind string `json:"kind"`
+}

@@ -144,6 +144,11 @@ func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
 		if err != nil {
 			return "", nil, err
 		}
+	case "=":
+		if len(tline) != 4 {
+			return "", nil, fmt.Errorf("%s copy type declaration requires a fromType type name", tname)
+		}
+		return tname, &TypeCopy{Kind: "copy", FromType: tline[3]}, nil
 	default:
 		t, err = parseTypeTerm(tline[2:])
 	}
