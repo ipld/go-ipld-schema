@@ -5,6 +5,31 @@ import (
 	"strings"
 )
 
+type Schema struct {
+	AdvancedMap AdvancedMap `json:"advanced,omitempty"`
+	TypesMap    TypesMap    `json:"types"`
+}
+
+type AdvancedMap map[string]Advanced
+
+type Advanced struct {
+	Kind string `json:"kind"` // always "advanced"
+}
+
+type TypesMap map[string]Type
+
+type Type interface {
+	TypeDecl() string
+}
+
+type TypeMap struct {
+	KeyType        string             `json:"keyType"`
+	Kind           string             `json:"kind"`
+	Representation *MapRepresentation `json:"representation,omitempty"`
+	ValueNullable  bool               `json:"valueNullable,omitempty"`
+	ValueType      TypeTerm           `json:"valueType"`
+}
+
 type TypeStruct struct {
 	Fields         map[string]*StructField `json:"fields"`
 	Kind           string                  `json:"kind"`
@@ -121,6 +146,7 @@ func (t *TypeList) TypeDecl() string {
 	}
 	return fmt.Sprintf("[%s]", tval)
 }
+
 func (t *TypeUnion) TypeDecl() string {
 	term := "union {\n"
 	if t.Representation != nil {
@@ -207,7 +233,7 @@ func SimpleType(kind string) Type {
 	case "bool":
 		return &TypeBool{kind}
 	case "bytes":
-		return &TypeBytes{kind}
+		return &TypeBytes{Kind: kind}
 	case "float":
 		return &TypeFloat{kind}
 	case "int":
@@ -274,8 +300,15 @@ type TypeString struct {
 }
 
 type TypeBytes struct {
-	Kind string `json:"kind"`
+	Kind           string               `json:"kind"`
+	Representation *BytesRepresentation `json:"representation,omitempty"`
 }
+
+type BytesRepresentation struct {
+	Advanced *AdvancedDataLayoutName `json:"advanced,omitempty"`
+}
+
+type AdvancedDataLayoutName string
 
 type TypeInt struct {
 	Kind string `json:"kind"`
@@ -291,9 +324,14 @@ type TypeLink struct {
 }
 
 type TypeList struct {
-	Kind          string   `json:"kind"`
-	ValueNullable bool     `json:"valueNullable,omitempty"`
-	ValueType     TypeTerm `json:"valueType,omitempty"`
+	Kind           string              `json:"kind"`
+	Representation *ListRepresentation `json:"representation,omitempty"`
+	ValueNullable  bool                `json:"valueNullable,omitempty"`
+	ValueType      TypeTerm            `json:"valueType,omitempty"`
+}
+
+type ListRepresentation struct {
+	Advanced *AdvancedDataLayoutName `json:"advanced,omitempty"`
 }
 
 type TypeEnum struct {
@@ -333,28 +371,11 @@ type UnionRepresentation_Inline struct {
 	DiscriminantTable map[string]Type `json:"discriminantTable"`
 }
 
-type Schema struct {
-	SchemaMap SchemaMap `json:"schema"`
-}
-
-type SchemaMap map[string]Type
-
-type Type interface {
-	TypeDecl() string
-}
-
-type TypeMap struct {
-	KeyType        string             `json:"keyType"`
-	Kind           string             `json:"kind"`
-	Representation *MapRepresentation `json:"representation,omitempty"`
-	ValueNullable  bool               `json:"valueNullable,omitempty"`
-	ValueType      TypeTerm           `json:"valueType"`
-}
-
 type MapRepresentation struct {
 	Map         *MapRepresentation_Map      `json:"map,omitempty"`
 	StringPairs *Representation_StringPairs `json:"stringpairs,omitempty"`
 	ListPairs   *Representation_ListPairs   `json:"listpairs,omitempty"`
+	Advanced    *AdvancedDataLayoutName     `json:"advanced,omitempty"`
 }
 
 type MapRepresentation_Map struct{}

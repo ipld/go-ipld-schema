@@ -8,14 +8,14 @@ import (
 
 func ExportIpldSchema(sch *Schema, w io.Writer) error {
 	var types []string
-	for tname := range sch.SchemaMap {
+	for tname := range sch.TypesMap {
 		types = append(types, tname)
 	}
 
 	sort.Strings(types)
 
 	for _, tname := range types {
-		t := sch.SchemaMap[tname]
+		t := sch.TypesMap[tname]
 		fmt.Fprintf(w, "type %s %s\n\n", tname, t.TypeDecl())
 	}
 

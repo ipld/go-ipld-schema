@@ -117,12 +117,30 @@ func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
 		}
 		t, err = parseEnum(s)
 	case "bool", "bytes", "float", "int", "link", "string":
+		if ttype == "bytes" && len(tline) >= 4 && tline[3] == "representation" {
+			if len(tline) != 6 || tline[4] != "advanced" {
+				return "", nil, fmt.Errorf("%s declaration has malformed 'advanced' representation", ttype)
+			}
+
+			adlName := AdvancedDataLayoutName(tline[5])
+			return tname, &TypeBytes{
+				Kind:           "bytes",
+				Representation: &BytesRepresentation{Advanced: &adlName},
+			}, nil
+		}
+
 		if len(tline) == 3 {
 			return tname, SimpleType(ttype), nil
 		}
+
 		return "", nil, fmt.Errorf("%s declaration cannot be followed by additional tokens", ttype)
 	case "{":
 		t, err = parseMapType(tline, s)
+		if err != nil {
+			return "", nil, err
+		}
+	case "[":
+		t, err = parseListType(tline, s)
 		if err != nil {
 			return "", nil, err
 		}
@@ -513,32 +531,10 @@ func parseTypeTerm(toks []string) (Type, error) {
 		return tokenToLink(toks[0]), nil
 	}
 
+	// handle anonymous [] and {} types here
 	switch toks[0] {
 	case "[":
-		toks = toks[1:]
-
-		last := toks[len(toks)-1]
-		if last != "]" {
-			return nil, fmt.Errorf("TypeTerm must end with matching ']'")
-		}
-		toks = toks[:len(toks)-1]
-
-		var nullable bool
-		if toks[0] == "nullable" {
-			nullable = true
-			toks = toks[1:]
-		}
-
-		subtype, err := parseTypeTerm(toks)
-		if err != nil {
-			return nil, err
-		}
-
-		return &TypeList{
-			Kind:          "list",
-			ValueType:     subtype,
-			ValueNullable: nullable,
-		}, nil
+		return parseListTypeTerm(toks)
 	case "{":
 		return parseMapTypeTerm(toks)
 	default:
@@ -591,6 +587,12 @@ func parseMapType(toks []string, s *bufio.Scanner) (*TypeMap, error) {
 				return nil, fmt.Errorf("extraneous tokens found after map 'listpairs' representation declaration")
 			}
 			mt.Representation = &MapRepresentation{ListPairs: &Representation_ListPairs{}}
+		case "advanced":
+			if len(toks) != end+3 {
+				return nil, fmt.Errorf("malformed map 'advanced' representation declaration")
+			}
+			adlName := AdvancedDataLayoutName(toks[end+2])
+			mt.Representation = &MapRepresentation{Advanced: &adlName}
 		default:
 			return nil, fmt.Errorf("unknown map 'representation' type [%v]", reprType)
 		}
@@ -631,6 +633,67 @@ func parseMapTypeTerm(toks []string) (*TypeMap, error) {
 		Kind:          "map",
 		KeyType:       keyType,
 		ValueType:     valueType,
+		ValueNullable: nullable,
+	}, nil
+}
+
+func parseListType(toks []string, s *bufio.Scanner) (*TypeList, error) {
+	end := len(toks)
+	if end >= 6 && toks[5] == "representation" {
+		end = 5
+	} else if end >= 7 && toks[6] == "representation" { // could have a "nullable"
+		end = 6
+	}
+
+	lt, err := parseListTypeTerm(toks[2:end])
+	if err != nil {
+		return nil, err
+	}
+
+	if end != len(toks) {
+		// we have a representation
+		if toks[len(toks)-1] == "representation" {
+			return nil, fmt.Errorf("map 'representation' keyword must be followed by a representation type")
+		}
+
+		reprType := toks[end+1]
+		if reprType == "advanced" {
+			if len(toks) != end+3 {
+				return nil, fmt.Errorf("malformed map 'advanced' representation declaration")
+			}
+			adlName := AdvancedDataLayoutName(toks[end+2])
+			lt.Representation = &ListRepresentation{Advanced: &adlName}
+		} else {
+			return nil, fmt.Errorf("unknown map 'representation' type [%v]", reprType)
+		}
+	}
+
+	return lt, nil
+}
+
+func parseListTypeTerm(toks []string) (*TypeList, error) {
+	toks = toks[1:]
+
+	last := toks[len(toks)-1]
+	if last != "]" {
+		return nil, fmt.Errorf("list TypeTerm must end with matching ']'")
+	}
+	toks = toks[:len(toks)-1]
+
+	var nullable bool
+	if toks[0] == "nullable" {
+		nullable = true
+		toks = toks[1:]
+	}
+
+	subtype, err := parseTypeTerm(toks)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TypeList{
+		Kind:          "list",
+		ValueType:     subtype,
 		ValueNullable: nullable,
 	}, nil
 }
@@ -827,7 +890,7 @@ func parseStructRepr(line []string, s *bufio.Scanner, freps map[string]SRMFieldD
 }
 
 func ParseSchema(s *bufio.Scanner) (*Schema, error) {
-	schema := &Schema{SchemaMap: make(SchemaMap)}
+	schema := &Schema{TypesMap: make(TypesMap)}
 
 	for s.Scan() {
 		toks := tokens(s.Text())
@@ -844,7 +907,18 @@ func ParseSchema(s *bufio.Scanner) (*Schema, error) {
 				fmt.Printf("%q\n", toks)
 				return nil, err
 			}
-			schema.SchemaMap[name] = t
+			schema.TypesMap[name] = t
+		case "advanced":
+			if len(toks) == 1 {
+				return nil, fmt.Errorf("'advanced' declaration requires a name token")
+			}
+			if len(toks) != 2 {
+				return nil, fmt.Errorf("extraneous tokens after 'advanced' declaration")
+			}
+			if schema.AdvancedMap == nil {
+				schema.AdvancedMap = make(AdvancedMap)
+			}
+			schema.AdvancedMap[toks[1]] = Advanced{"advanced"}
 		default:
 			return nil, fmt.Errorf("unexpected token: %q", toks[0])
 		}
