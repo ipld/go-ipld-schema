@@ -116,7 +116,7 @@ func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
 			return "", nil, fmt.Errorf("enum declaration must end in an open brace")
 		}
 		t, err = parseEnum(s)
-	case "bool", "bytes", "float", "int", "link", "string":
+	case "bool", "bytes", "float", "int", "link", "string", "null":
 		if ttype == "bytes" && len(tline) >= 4 && tline[3] == "representation" {
 			if len(tline) != 6 || tline[4] != "advanced" {
 				return "", nil, fmt.Errorf("%s declaration has malformed 'advanced' representation", ttype)

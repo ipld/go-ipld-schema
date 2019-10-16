@@ -224,6 +224,10 @@ func (t *TypeString) TypeDecl() string {
 	return "string"
 }
 
+func (t *TypeNull) TypeDecl() string {
+	return "null"
+}
+
 func (t *TypeBytes) TypeDecl() string {
 	return "bytes"
 }
@@ -261,6 +265,8 @@ func SimpleType(kind string) Type {
 		return &TypeLink{nil, kind}
 	case "string":
 		return &TypeString{kind}
+	case "null":
+		return &TypeNull{kind}
 	}
 	return nil
 }
@@ -315,6 +321,10 @@ type TypeBool struct {
 }
 
 type TypeString struct {
+	Kind string `json:"kind"`
+}
+
+type TypeNull struct {
 	Kind string `json:"kind"`
 }
 
