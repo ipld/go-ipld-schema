@@ -90,7 +90,7 @@ var schemaToSchemaCmd = cli.Command{
 			return err
 		}
 
-		if err := schema.ExportIpldSchema(sch, os.Stdout); err != nil {
+		if err := schema.PrintSchema(sch, os.Stdout); err != nil {
 			panic(err)
 		}
 

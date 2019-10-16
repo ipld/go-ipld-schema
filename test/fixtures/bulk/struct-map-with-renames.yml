@@ -1,9 +1,9 @@
 schema: |
   type StructAsMapWithRenames struct {
-    bar Bool (rename "b")
-    boom String
-    baz String (rename "z")
     foo Int (rename "f" implicit "0")
+    bar Bool (rename "b")
+    baz String (rename "z")
+    boom String
   }
 expected: |
   {
@@ -11,27 +11,31 @@ expected: |
       "StructAsMapWithRenames": {
         "kind": "struct",
         "fields": {
+          "foo": {
+            "type": "Int"
+          },
           "bar": {
             "type": "Bool"
-          },
-          "boom": {
-            "type": "String"
           },
           "baz": {
             "type": "String"
           },
-          "foo": {
-            "type": "Int"
+          "boom": {
+            "type": "String"
           }
         },
         "representation": {
           "map": {
             "fields": {
-              "bar": { "rename": "b" },
-              "baz": { "rename": "z" },
               "foo": {
                 "implicit": 0,
                 "rename": "f"
+              },
+              "bar": {
+                "rename": "b"
+              },
+              "baz": {
+                "rename": "z"
               }
             }
           }
