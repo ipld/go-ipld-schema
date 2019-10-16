@@ -3,7 +3,6 @@ package gengo
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	. "github.com/ipld/go-ipld-schema/schema"
@@ -11,34 +10,27 @@ import (
 
 // in reality, the 'right' way to do this is to probably use the golang ast packages
 func GolangCodeGen(schema *Schema, w io.Writer) error {
-	var types []string
-	for tname := range schema.TypesMap {
-		types = append(types, tname)
-	}
-
-	sort.Strings(types)
 	fmt.Fprintf(w, "package main\n\n")
 
-	for _, tname := range types {
-		t := schema.TypesMap[tname]
-		tname := strings.Title(tname)
+	for _, t := range schema.TypesList.AsList() {
+		tname := strings.Title(t.GetName())
 		switch t := t.(type) {
 		case *TypeStruct:
 			fmt.Fprintf(w, "type %s struct {\n", tname)
-			for fname, f := range t.Fields {
+			for _, f := range t.Fields.AsList() {
 				t := typeToGoType(f.Type.(Type)) // TODO: should TypeTerm just be type? it seems like it wants that
 				if f.Nullable {
 					t = "*" + t
 				}
-				fname := strings.Title(fname)
+				fname := strings.Title(f.GetName())
 				fmt.Fprintf(w, "\t%s %s\n", fname, t)
 			}
 			fmt.Fprintf(w, "}\n\n")
 		case *TypeEnum:
 			enumTag := "_Enum" + tname
 			fmt.Fprintf(w, "type %s interface {\n\t%s()\n}\n", tname, enumTag)
-			for mem := range t.Members {
-				enumelem := tname + mem
+			for mem := range t.Members.AsList() {
+				enumelem := fmt.Sprintf("%s%v", tname, mem)
 				fmt.Fprintf(w, "type %s struct{}\n", enumelem)
 				fmt.Fprintf(w, "func (_ %s) %s() {}\n", enumelem, enumTag)
 				fmt.Fprintf(w, "var _ %s = (*%s)(nil)\n", tname, enumelem)
@@ -93,9 +85,9 @@ func typeToGoType(t Type) string {
 		if t.ValueNullable {
 			val = "*" + val
 		}
-		return fmt.Sprintf("map[%s]%s", typeToGoType(NamedType(t.KeyType)), val)
+		return fmt.Sprintf("map[%s]%s", typeToGoType(NewNamedType(t.KeyType)), val)
 	case NamedType:
-		return string(t)
+		return t.GetName()
 	default:
 		fmt.Printf("BAD TYPE: %T\n", t)
 		panic("unrecognized type")

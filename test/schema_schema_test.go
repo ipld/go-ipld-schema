@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ipld/go-ipld-schema/parser"
@@ -12,16 +13,18 @@ import (
 )
 
 func TestSchemaSchema(t *testing.T) {
-	expected := loadExpected(t)
-	actual := loadActual(t)
+	expectedString, expectedParsed := loadExpected(t)
+	actualString, actualParsed := loadActual(t)
 
-	for name, typ := range expected {
-		assert.Contains(t, actual, name)
-		assert.Equal(t, typ, actual[name], name)
+	for name, typ := range expectedParsed {
+		assert.Contains(t, actualParsed, name)
+		assert.Equal(t, typ, actualParsed[name], name)
 	}
+
+	assert.Equal(t, strings.TrimSpace(expectedString), actualString)
 }
 
-func loadExpected(t *testing.T) map[string]interface{} {
+func loadExpected(t *testing.T) (string, map[string]interface{}) {
 	var expected map[string]interface{}
 
 	file, err := ioutil.ReadFile("./fixtures/schema-schema.ipldsch.json")
@@ -30,10 +33,10 @@ func loadExpected(t *testing.T) map[string]interface{} {
 	err = json.Unmarshal(file, &expected)
 	assert.NoError(t, err)
 
-	return expected
+	return string(file), expected
 }
 
-func loadActual(t *testing.T) map[string]interface{} {
+func loadActual(t *testing.T) (string, map[string]interface{}) {
 	fi, err := os.Open("./fixtures/schema-schema.ipldsch")
 	assert.NoError(t, err)
 	defer fi.Close()
@@ -47,5 +50,5 @@ func loadActual(t *testing.T) map[string]interface{} {
 	err = json.Unmarshal(jsonified, &actual)
 	assert.NoError(t, err)
 
-	return actual
+	return string(jsonified), actual
 }

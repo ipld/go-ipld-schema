@@ -2,6 +2,7 @@ package test
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -12,12 +13,14 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/ipld/go-ipld-schema/parser"
+	"github.com/ipld/go-ipld-schema/schema"
 )
 
 const fixturesDir = "./fixtures/bulk/"
 
 type Fixture struct {
 	Schema          string
+	Canonical       string
 	Expected        string
 	ExpectedParsed  interface{}
 	Blocks          []FixtureBlock
@@ -51,28 +54,23 @@ func verifyFixture(t *testing.T, name string) {
 
 	actual, err := json.MarshalIndent(parsedSchema, "", "  ")
 	assert.NoError(t, err)
-	expected, err := json.MarshalIndent(fx.ExpectedParsed, "", "  ")
+	// expected, err := json.MarshalIndent(fx.ExpectedParsed, "", "  ")
+	// assert.NoError(t, err)
+
+	assert.Equal(t, strings.TrimSpace(string(fx.Expected)), string(actual))
+
+	var out bytes.Buffer
+	err = schema.PrintSchema(parsedSchema, &out)
 	assert.NoError(t, err)
+	regenerated := strings.ReplaceAll(out.String(), "\t", "  ")
+	regenerated = regenerated[0 : len(regenerated)-1]
 
-	assert.Equal(t, string(expected), string(actual))
+	expected := fx.Schema
+	if fx.Canonical != "" {
+		expected = fx.Canonical
+	}
 
-	/*
-		var out bytes.Buffer
-		err = schema.ExportIpldSchema(parsedSchema, &out)
-		assert.NoError(t, err)
-		regenerated := strings.ReplaceAll(out.String(), "\t", "  ")
-		regenerated = regenerated[0 : len(regenerated)-1]
-	*/
-
-	/* TODO: order of map[] fields in some structs causes shuffling so we can't do a straight compare
-	without imposing order retention
-	fmt.Println("--------- Original Schema:")
-	fmt.Printf(fx.Schema)
-	fmt.Println("--------- Regenerated Schema:")
-	fmt.Printf(regenerated)
-
-	assert.Equal(t, fx.Schema, regenerated)
-	*/
+	assert.Equal(t, expected, regenerated)
 }
 
 func loadFixture(t *testing.T, name string) Fixture {
