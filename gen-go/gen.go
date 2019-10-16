@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 
-	. "github.com/whyrusleeping/ipld-schema/schema"
+	. "github.com/ipld/go-ipld-schema/schema"
 )
 
 // in reality, the 'right' way to do this is to probably use the golang ast packages
 func GolangCodeGen(schema *Schema, w io.Writer) error {
 	var types []string
-	for tname := range schema.SchemaMap {
+	for tname := range schema.TypesMap {
 		types = append(types, tname)
 	}
 
@@ -20,7 +20,7 @@ func GolangCodeGen(schema *Schema, w io.Writer) error {
 	fmt.Fprintf(w, "package main\n\n")
 
 	for _, tname := range types {
-		t := schema.SchemaMap[tname]
+		t := schema.TypesMap[tname]
 		tname := strings.Title(tname)
 		switch t := t.(type) {
 		case *TypeStruct:

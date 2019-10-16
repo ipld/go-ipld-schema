@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/ipld/go-ipld-schema/parser"
 	"github.com/stretchr/testify/assert"
-	"github.com/whyrusleeping/ipld-schema/parser"
 )
 
 func TestSchemaSchema(t *testing.T) {

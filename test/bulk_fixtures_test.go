@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/yaml.v2"
 
-	"github.com/whyrusleeping/ipld-schema/parser"
+	"github.com/ipld/go-ipld-schema/parser"
 )
 
 const fixturesDir = "./fixtures/bulk/"
