@@ -65,7 +65,7 @@ func verifyFixture(t *testing.T, name string) {
 	*/
 
 	/* TODO: order of map[] fields in some structs causes shuffling so we can't do a straight compare
-		without imposing order retention
+	without imposing order retention
 	fmt.Println("--------- Original Schema:")
 	fmt.Printf(fx.Schema)
 	fmt.Println("--------- Regenerated Schema:")

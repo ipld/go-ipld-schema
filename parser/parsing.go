@@ -157,25 +157,77 @@ func parseType(tline []string, s *bufio.Scanner) (string, Type, error) {
 }
 
 func parseEnum(s *bufio.Scanner) (*TypeEnum, error) {
-	vals := make(map[string]*struct{})
+	vals := make(map[EnumValue]*struct{})
+	reprVals := make(map[EnumValue]string)
 	for s.Scan() {
 		toks := tokens(s.Text())
-		if len(toks) == 0 {
+		ntoks := len(toks)
+
+		if ntoks == 0 { // blank line
 			continue
 		}
 
-		switch toks[0] {
-		case "|":
-			vals[toks[1]] = nil
-		case "}":
-			return &TypeEnum{
-				Kind:    "enum",
-				Members: vals,
-			}, nil
-		default:
-			return nil, fmt.Errorf("unexpected token: %s", toks[0])
+		if toks[0] == "|" {
+			if ntoks == 1 {
+				return nil, fmt.Errorf("expected EnumValue after '|'")
+			}
+
+			if ntoks != 2 && ntoks != 5 {
+				return nil, fmt.Errorf("unexpected tokens after EnumValue %v", toks)
+			}
+
+			ev := EnumValue(toks[1])
+
+			vals[ev] = nil
+
+			if ntoks == 5 {
+				if toks[2] != "(" && toks[4] != ")" {
+					return nil, fmt.Errorf("unexpected tokens after EnumValue, expected representation value")
+				}
+
+				reprVals[ev] = toks[3]
+			}
+
+			continue
 		}
+
+		if toks[0] == "}" {
+			er := EnumRepresentation{}
+
+			if ntoks == 3 && toks[1] == "representation" && (toks[2] == "int" || toks[2] == "string") {
+				if toks[2] == "int" {
+					eri := make(EnumRepresentation_Int)
+					for k, v := range reprVals {
+						i, err := strconv.ParseInt(string(v), 10, 64)
+						if err != nil {
+							return nil, fmt.Errorf("'int' union representation may only use int values (%v)", v)
+						}
+						eri[k] = int(i)
+					}
+					er.Int = &eri
+				}
+			} else if ntoks != 1 {
+				return nil, fmt.Errorf("unexpected tokens after end of enum")
+			}
+
+			if er.Int == nil {
+				ers := make(EnumRepresentation_String)
+				for k, v := range reprVals {
+					ers[k] = v
+				}
+				er.String = &ers
+			}
+
+			return &TypeEnum{
+				Kind:           "enum",
+				Members:        vals,
+				Representation: &er,
+			}, nil
+		}
+
+		return nil, fmt.Errorf("unexpected token: %s", toks[0])
 	}
+
 	return nil, fmt.Errorf("unterminated enum")
 }
 
