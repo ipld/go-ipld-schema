@@ -192,9 +192,24 @@ func (t *TypeUnion) TypeDecl() string {
 func (t *TypeEnum) TypeDecl() string {
 	term := "enum {\n"
 	for m := range t.Members {
-		term += fmt.Sprintf("\t| \"%s\"\n", m)
+		term += fmt.Sprintf("\t| %s", m)
+		if t.Representation != nil {
+			if t.Representation.String != nil {
+				if val, ok := (*(t.Representation.String))[m]; ok {
+					term += fmt.Sprintf(" (\"%s\")", val)
+				}
+			} else if t.Representation.Int != nil {
+				if val, ok := (*(t.Representation.Int))[m]; ok {
+					term += fmt.Sprintf(" (\"%d\")", val)
+				}
+			}
+		}
+		term += "\n"
 	}
 	term += "}"
+	if t.Representation != nil && t.Representation.Int != nil {
+		term += " representation int"
+	}
 	return term
 }
 
@@ -338,10 +353,22 @@ type ListRepresentation struct {
 	Advanced *AdvancedDataLayoutName `json:"advanced,omitempty"`
 }
 
+type EnumValue string
+
 type TypeEnum struct {
-	Kind    string               `json:"kind"`
-	Members map[string]*struct{} `json:"members"`
+	Kind           string                  `json:"kind"`
+	Members        map[EnumValue]*struct{} `json:"members"`
+	Representation *EnumRepresentation     `json:"representation,omitempty"`
 }
+
+type EnumRepresentation struct {
+	String *EnumRepresentation_String `json:"string,omitempty"`
+	Int    *EnumRepresentation_Int    `json:"int,omitempty"`
+}
+
+type EnumRepresentation_String map[EnumValue]string
+
+type EnumRepresentation_Int map[EnumValue]int
 
 type TypeUnion struct {
 	Kind           string               `json:"kind"`
@@ -386,5 +413,5 @@ type MapRepresentation_Map struct{}
 
 type TypeCopy struct {
 	FromType string `json:"fromType"`
-	Kind string `json:"kind"`
+	Kind     string `json:"kind"`
 }
