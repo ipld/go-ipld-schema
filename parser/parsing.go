@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/whyrusleeping/ipld-schema/schema"
+	. "github.com/ipld/go-ipld-schema/schema"
 )
 
 func tokens(l string) []string {

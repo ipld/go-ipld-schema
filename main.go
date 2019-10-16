@@ -8,9 +8,9 @@ import (
 
 	"github.com/urfave/cli"
 
-	gengo "github.com/whyrusleeping/ipld-schema/gen-go"
-	parser "github.com/whyrusleeping/ipld-schema/parser"
-	schema "github.com/whyrusleeping/ipld-schema/schema"
+	gengo "github.com/ipld/go-ipld-schema/gen-go"
+	parser "github.com/ipld/go-ipld-schema/parser"
+	schema "github.com/ipld/go-ipld-schema/schema"
 )
 
 var genGoCmd = cli.Command{
