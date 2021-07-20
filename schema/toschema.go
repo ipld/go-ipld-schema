@@ -152,7 +152,7 @@ func (t *TypeEnum) TypeDecl() string {
 				}
 			} else if t.Representation.Int != nil {
 				if val, ok := t.Representation.Int.GetMapping(m); ok {
-					term += fmt.Sprintf(" (\"%d\")", val)
+					term += fmt.Sprintf(" (\"%s\")", val)
 				}
 			}
 		}
@@ -198,13 +198,13 @@ func (t *TypeUnion) TypeDecl() string {
 
 			term += fmt.Sprintf("} representation inline {\n\tdiscriminantKey \"%s\"\n}",
 				t.Representation.Inline.DiscriminantKey)
-		} else if t.Representation.BytePrefix != nil {
-			for _, k := range t.Representation.BytePrefix.TypeList() {
-				v, _ := t.Representation.BytePrefix.GetMapping(k)
-				term += fmt.Sprintf("\t| %s %d\n", TypeTermDecl(k), v)
+		} else if t.Representation.BytesPrefix != nil {
+			for _, k := range t.Representation.BytesPrefix.KeyList() {
+				v, _ := t.Representation.BytesPrefix.GetMapping(k)
+				term += fmt.Sprintf("\t| %s \"%s\"\n", TypeTermDecl(v), strings.ToUpper(k))
 			}
 
-			term += "} representation byteprefix"
+			term += "} representation bytesprefix"
 		} else {
 			panic("no representation type specified for union")
 		}

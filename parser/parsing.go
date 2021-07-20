@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -193,11 +194,11 @@ func parseEnum(name string, s *bufio.Scanner) (*schema.TypeEnum, error) {
 					eri := schema.EnumRepresentation_Int{}
 					for i, v := range vals {
 						if reprVals[i] != nil {
-							i, err := strconv.ParseInt(*reprVals[i], 10, 64)
+							_, err := strconv.ParseInt(*reprVals[i], 10, 64)
 							if err != nil {
 								return nil, fmt.Errorf("'int' union representation may only use int values (%v)", v)
 							}
-							eri.AddMapping(v, int(i))
+							eri.AddMapping(v, *reprVals[i])
 						}
 					}
 					er.Int = &eri
@@ -312,21 +313,20 @@ func parseUnion(name string, s *bufio.Scanner) (*schema.TypeUnion, error) {
 				repr := &schema.UnionRepresentation{Envelope: urep}
 				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
-			case "byteprefix":
-				rep := schema.UnionRepresentation_BytePrefix{}
+			case "bytesprefix":
+				rep := schema.UnionRepresentation_BytesPrefix{}
 				for _, k := range unionVals {
-					nt, ok := k.typ.(schema.NamedType)
-					if !ok {
-						return nil, fmt.Errorf("'byteprefix' union representation may only contain named types (%v)", k.typ)
-					}
-					i, err := strconv.ParseInt(string(k.key), 10, 64)
+					_, err := hex.DecodeString(k.key)
 					if err != nil {
-						return nil, fmt.Errorf("'byteprefix' union representation may only use int discriminators (%v)", k.typ)
+						return nil, fmt.Errorf("'bytesprefix' union representation may only use hex string discriminators (%v)", k.typ)
 					}
-					rep.AddMapping(nt, int(i))
+					if k.key != strings.ToUpper(k.key) {
+						return nil, fmt.Errorf("'bytesprefix' union representation may only use uppercase hex string discriminators (%v)", k.typ)
+					}
+					rep.AddMapping(k.typ, k.key)
 				}
 
-				repr := &schema.UnionRepresentation{BytePrefix: &rep}
+				repr := &schema.UnionRepresentation{BytesPrefix: &rep}
 				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			default:
