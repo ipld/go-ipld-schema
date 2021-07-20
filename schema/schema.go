@@ -284,22 +284,22 @@ type EnumRepresentation_Int struct {
 	mappings []enumRepresentation_IntMapping
 }
 
-func (eri *EnumRepresentation_Int) AddMapping(member EnumValue, value int) {
+func (eri *EnumRepresentation_Int) AddMapping(member EnumValue, value string) {
 	eri.mappings = append(eri.mappings, enumRepresentation_IntMapping{member, value})
 }
 
-func (eri EnumRepresentation_Int) GetMapping(member EnumValue) (int, bool) {
+func (eri EnumRepresentation_Int) GetMapping(member EnumValue) (string, bool) {
 	for _, k := range eri.mappings {
 		if k.Member == member {
 			return k.Value, true
 		}
 	}
-	return 0, false
+	return "", false
 }
 
 type enumRepresentation_IntMapping struct {
 	Member EnumValue
-	Value  int
+	Value  string
 }
 
 type TypeUnion struct {
@@ -316,11 +316,11 @@ func NewTypeUnion(name string, representation *UnionRepresentation) TypeUnion {
 }
 
 type UnionRepresentation struct {
-	Keyed      *UnionRepresentation_Keyed      `json:"keyed,omitempty"`
-	Kinded     *UnionRepresentation_Kinded     `json:"kinded,omitempty"`
-	Envelope   *UnionRepresentation_Envelope   `json:"envelope,omitempty"`
-	Inline     *UnionRepresentation_Inline     `json:"inline,omitempty"`
-	BytePrefix *UnionRepresentation_BytePrefix `json:"byteprefix,omitempty"`
+	Keyed       *UnionRepresentation_Keyed       `json:"keyed,omitempty"`
+	Kinded      *UnionRepresentation_Kinded      `json:"kinded,omitempty"`
+	Envelope    *UnionRepresentation_Envelope    `json:"envelope,omitempty"`
+	Inline      *UnionRepresentation_Inline      `json:"inline,omitempty"`
+	BytesPrefix *UnionRepresentation_BytesPrefix `json:"bytesprefix,omitempty"`
 }
 
 type UnionRepresentation_Keyed struct {
@@ -385,34 +385,42 @@ type unionRepresentation_KindedMapping struct {
 	Typ  Type
 }
 
-type UnionRepresentation_BytePrefix struct {
-	mappings []unionRepresentation_BytePrefixMapping
+type UnionRepresentation_BytesPrefix struct {
+	mappings []unionRepresentation_BytesPrefixMapping
 }
 
-func (urb *UnionRepresentation_BytePrefix) AddMapping(typ NamedType, byt int) {
-	urb.mappings = append(urb.mappings, unionRepresentation_BytePrefixMapping{typ, byt})
+func (urb *UnionRepresentation_BytesPrefix) AddMapping(typ Type, byts string) {
+	urb.mappings = append(urb.mappings, unionRepresentation_BytesPrefixMapping{typ, byts})
 }
 
-func (urb UnionRepresentation_BytePrefix) GetMapping(Typ NamedType) (int, bool) {
+func (urb UnionRepresentation_BytesPrefix) GetMapping(byts string) (Type, bool) {
 	for _, k := range urb.mappings {
-		if k.Typ == Typ {
-			return k.Byt, true
+		if k.Byts == byts {
+			return k.Typ, true
 		}
 	}
-	return 0, false
+	return nil, false
 }
 
-func (urb UnionRepresentation_BytePrefix) TypeList() []NamedType {
-	tl := make([]NamedType, len(urb.mappings))
+func (urb UnionRepresentation_BytesPrefix) KeyList() []string {
+	bl := make([]string, len(urb.mappings))
+	for i, d := range urb.mappings {
+		bl[i] = d.Byts
+	}
+	return bl
+}
+
+func (urb UnionRepresentation_BytesPrefix) TypeList() []Type {
+	tl := make([]Type, len(urb.mappings))
 	for i, d := range urb.mappings {
 		tl[i] = d.Typ
 	}
 	return tl
 }
 
-type unionRepresentation_BytePrefixMapping struct {
-	Typ NamedType
-	Byt int
+type unionRepresentation_BytesPrefixMapping struct {
+	Typ  Type
+	Byts string
 }
 
 type UnionRepresentation_Envelope struct {
