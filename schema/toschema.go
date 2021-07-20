@@ -206,7 +206,7 @@ func (t *TypeUnion) TypeDecl() string {
 
 			term += "} representation byteprefix"
 		} else {
-			panic(fmt.Sprintf("no representation type specified for union"))
+			panic("no representation type specified for union")
 		}
 	}
 	return term

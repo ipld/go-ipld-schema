@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/ipld/go-ipld-schema/schema"
+	"github.com/ipld/go-ipld-schema/schema"
 )
 
 func tokens(l string) []string {
@@ -58,7 +58,7 @@ loop:
 	return out
 }
 
-func parseType(tline []string, s *bufio.Scanner) (Type, error) {
+func parseType(tline []string, s *bufio.Scanner) (schema.Type, error) {
 	if len(tline) < 3 {
 		return nil, fmt.Errorf("expected at least three tokens on type definition line")
 	}
@@ -68,7 +68,7 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 	tname := tline[1]
 	ttype := tline[2]
 
-	var t Type
+	var t schema.Type
 	var err error
 	switch ttype {
 	case "struct":
@@ -84,7 +84,7 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 
 			inner := tline[4 : len(tline)-1]
 			if len(inner) == 0 {
-				ts := NewTypeStruct(tname, &StructRepresentation{Map: &StructRepresentation_Map{}})
+				ts := schema.NewTypeStruct(tname, &schema.StructRepresentation{Map: &schema.StructRepresentation_Map{}})
 				return &ts, nil
 			}
 
@@ -93,7 +93,7 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 				return nil, err
 			}
 
-			ts := NewTypeStruct(tname, &StructRepresentation{Map: &StructRepresentation_Map{}})
+			ts := schema.NewTypeStruct(tname, &schema.StructRepresentation{Map: &schema.StructRepresentation_Map{}})
 			ts.Fields.Append(*strf)
 			return &ts, nil
 		}
@@ -115,13 +115,13 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 				return nil, fmt.Errorf("%s declaration has malformed 'advanced' representation", ttype)
 			}
 
-			adlName := AdvancedDataLayoutName(tline[5])
-			tb := NewTypeBytes(tname, &BytesRepresentation{Advanced: &adlName})
+			adlName := schema.AdvancedDataLayoutName(tline[5])
+			tb := schema.NewTypeBytes(tname, &schema.BytesRepresentation{Advanced: &adlName})
 			return &tb, nil
 		}
 
 		if len(tline) == 3 {
-			return NewSimpleType(tname, ttype), nil
+			return schema.NewSimpleType(tname, ttype), nil
 		}
 
 		return nil, fmt.Errorf("%s declaration cannot be followed by additional tokens", ttype)
@@ -139,7 +139,7 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 		if len(tline) != 4 {
 			return nil, fmt.Errorf("%s copy type declaration requires a fromType type name", tname)
 		}
-		tc := NewTypeCopy(tname, tline[3])
+		tc := schema.NewTypeCopy(tname, tline[3])
 		return &tc, nil
 	default:
 		t, err = parseTypeTerm(tname, tline[2:])
@@ -148,8 +148,8 @@ func parseType(tline []string, s *bufio.Scanner) (Type, error) {
 	return t, err
 }
 
-func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
-	vals := make([]EnumValue, 0)
+func parseEnum(name string, s *bufio.Scanner) (*schema.TypeEnum, error) {
+	vals := make([]schema.EnumValue, 0)
 	reprVals := make([]*string, 0)
 	for s.Scan() {
 		toks := tokens(s.Text())
@@ -168,7 +168,7 @@ func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
 				return nil, fmt.Errorf("unexpected tokens after EnumValue %v", toks)
 			}
 
-			ev := EnumValue(toks[1])
+			ev := schema.EnumValue(toks[1])
 
 			vals = append(vals, ev)
 
@@ -186,11 +186,11 @@ func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
 		}
 
 		if toks[0] == "}" {
-			er := EnumRepresentation{}
+			er := schema.EnumRepresentation{}
 
 			if ntoks == 3 && toks[1] == "representation" && (toks[2] == "int" || toks[2] == "string") {
 				if toks[2] == "int" {
-					eri := EnumRepresentation_Int{}
+					eri := schema.EnumRepresentation_Int{}
 					for i, v := range vals {
 						if reprVals[i] != nil {
 							i, err := strconv.ParseInt(*reprVals[i], 10, 64)
@@ -207,7 +207,7 @@ func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
 			}
 
 			if er.Int == nil {
-				ers := EnumRepresentation_String{}
+				ers := schema.EnumRepresentation_String{}
 				for i, v := range vals {
 					if reprVals[i] != nil {
 						ers.AddMapping(v, *reprVals[i])
@@ -216,7 +216,7 @@ func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
 				er.String = &ers
 			}
 
-			te := NewTypeEnum(name, &er)
+			te := schema.NewTypeEnum(name, &er)
 			for _, ev := range vals {
 				te.Members.Append(ev)
 			}
@@ -229,10 +229,10 @@ func parseEnum(name string, s *bufio.Scanner) (*TypeEnum, error) {
 	return nil, fmt.Errorf("unterminated enum")
 }
 
-func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
+func parseUnion(name string, s *bufio.Scanner) (*schema.TypeUnion, error) {
 	type unionVal struct {
 		key string
-		typ Type
+		typ schema.Type
 	}
 	unionVals := make([]unionVal, 0)
 	for s.Scan() {
@@ -251,7 +251,7 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 				unionVals = append(unionVals, unionVal{key, tokenToLink("", toks[1])}) // anonymous link
 			} else {
 				// TODO: validate characters
-				unionVals = append(unionVals, unionVal{key, NewNamedType(toks[1])})
+				unionVals = append(unionVals, unionVal{key, schema.NewNamedType(toks[1])})
 			}
 		case "}":
 			if len(toks) < 3 {
@@ -264,12 +264,12 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 
 			switch toks[2] {
 			case "kinded":
-				rep := UnionRepresentation_Kinded{}
+				rep := schema.UnionRepresentation_Kinded{}
 				for _, k := range unionVals {
-					rep.AddMapping(RepresentationKind(k.key), k.typ)
+					rep.AddMapping(schema.RepresentationKind(k.key), k.typ)
 				}
-				repr := &UnionRepresentation{Kinded: &rep}
-				tu := NewTypeUnion(name, repr)
+				repr := &schema.UnionRepresentation{Kinded: &rep}
+				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			case "inline":
 				if len(toks) < 4 {
@@ -284,17 +284,17 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 					urep.DiscriminantTable.AddMapping(k.key, k.typ)
 				}
 
-				repr := &UnionRepresentation{Inline: urep}
-				tu := NewTypeUnion(name, repr)
+				repr := &schema.UnionRepresentation{Inline: urep}
+				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			case "keyed":
-				rep := UnionRepresentation_Keyed{}
+				rep := schema.UnionRepresentation_Keyed{}
 				for _, k := range unionVals {
 					rep.AddMapping(k.key, k.typ)
 				}
 
-				repr := &UnionRepresentation{Keyed: &rep}
-				tu := NewTypeUnion(name, repr)
+				repr := &schema.UnionRepresentation{Keyed: &rep}
+				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			case "envelope":
 				if len(toks) < 4 {
@@ -309,13 +309,13 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 					urep.DiscriminantTable.AddMapping(k.key, k.typ)
 				}
 
-				repr := &UnionRepresentation{Envelope: urep}
-				tu := NewTypeUnion(name, repr)
+				repr := &schema.UnionRepresentation{Envelope: urep}
+				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			case "byteprefix":
-				rep := UnionRepresentation_BytePrefix{}
+				rep := schema.UnionRepresentation_BytePrefix{}
 				for _, k := range unionVals {
-					nt, ok := k.typ.(NamedType)
+					nt, ok := k.typ.(schema.NamedType)
 					if !ok {
 						return nil, fmt.Errorf("'byteprefix' union representation may only contain named types (%v)", k.typ)
 					}
@@ -326,8 +326,8 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 					rep.AddMapping(nt, int(i))
 				}
 
-				repr := &UnionRepresentation{BytePrefix: &rep}
-				tu := NewTypeUnion(name, repr)
+				repr := &schema.UnionRepresentation{BytePrefix: &rep}
+				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			default:
 				return nil, fmt.Errorf("unknown union representation '%s'", toks[2])
@@ -339,8 +339,8 @@ func parseUnion(name string, s *bufio.Scanner) (*TypeUnion, error) {
 	return nil, fmt.Errorf("unterminated union declaration")
 }
 
-func parseUnionInlineRepresentation(s *bufio.Scanner) (*UnionRepresentation_Inline, error) {
-	var urep UnionRepresentation_Inline
+func parseUnionInlineRepresentation(s *bufio.Scanner) (*schema.UnionRepresentation_Inline, error) {
+	var urep schema.UnionRepresentation_Inline
 	for s.Scan() {
 		toks := tokens(s.Text())
 		if len(toks) == 0 {
@@ -363,8 +363,8 @@ func parseUnionInlineRepresentation(s *bufio.Scanner) (*UnionRepresentation_Inli
 	return nil, fmt.Errorf("reached end of file while parsing inline union representation")
 }
 
-func parseUnionEnvelopeRepresentation(s *bufio.Scanner) (*UnionRepresentation_Envelope, error) {
-	var urep UnionRepresentation_Envelope
+func parseUnionEnvelopeRepresentation(s *bufio.Scanner) (*schema.UnionRepresentation_Envelope, error) {
+	var urep schema.UnionRepresentation_Envelope
 	for s.Scan() {
 		toks := tokens(s.Text())
 		if len(toks) == 0 {
@@ -407,9 +407,9 @@ func parseUnionEnvelopeRepresentation(s *bufio.Scanner) (*UnionRepresentation_En
 	return nil, fmt.Errorf("reached end of file while parsing inline representation")
 }
 
-func parseStruct(name string, s *bufio.Scanner) (*TypeStruct, error) {
-	st := NewTypeStruct(name, nil)
-	maprep := StructRepresentation_Map{}
+func parseStruct(name string, s *bufio.Scanner) (*schema.TypeStruct, error) {
+	st := schema.NewTypeStruct(name, nil)
+	maprep := schema.StructRepresentation_Map{}
 
 	for s.Scan() {
 		toks := tokens(s.Text())
@@ -431,7 +431,7 @@ func parseStruct(name string, s *bufio.Scanner) (*TypeStruct, error) {
 			}
 			if st.Representation == nil {
 				// default representation
-				st.Representation = &StructRepresentation{Map: &maprep}
+				st.Representation = &schema.StructRepresentation{Map: &maprep}
 			}
 
 			return &st, nil
@@ -440,7 +440,7 @@ func parseStruct(name string, s *bufio.Scanner) (*TypeStruct, error) {
 		var srmFieldTokens []string
 		typeTermFieldTokens := toks
 
-		var frep *StructRepresentation_Map_FieldDetails
+		var frep *schema.StructRepresentation_Map_FieldDetails
 		if toks[len(toks)-1] == ")" {
 			frepStart := 0
 			for ; frepStart < len(toks); frepStart++ {
@@ -474,7 +474,7 @@ func parseStruct(name string, s *bufio.Scanner) (*TypeStruct, error) {
 	return &st, nil
 }
 
-func parseStructField(toks []string) (*StructField, error) {
+func parseStructField(toks []string) (*schema.StructField, error) {
 	var optional, nullable bool
 	var i int = 1
 
@@ -503,11 +503,11 @@ loop:
 
 	fname := toks[0]
 
-	sf := NewStructField(fname, nullable, optional, trepr)
+	sf := schema.NewStructField(fname, nullable, optional, trepr)
 	return &sf, nil
 }
 
-func parseStructFieldRep(fieldName string, typeTerm TypeTerm, toks []string) (*StructRepresentation_Map_FieldDetails, error) {
+func parseStructFieldRep(fieldName string, typeTerm schema.TypeTerm, toks []string) (*schema.StructRepresentation_Map_FieldDetails, error) {
 	var implicit interface{}
 	var rename string
 
@@ -547,14 +547,14 @@ func parseStructFieldRep(fieldName string, typeTerm TypeTerm, toks []string) (*S
 		return nil, fmt.Errorf("incorrectly formatted struct field representation: %q", toks)
 	}
 
-	srmfd := NewStructRepresentation_Map_FieldDetails(fieldName, implicit, rename)
+	srmfd := schema.NewStructRepresentation_Map_FieldDetails(fieldName, implicit, rename)
 	return &srmfd, nil
 }
 
-func coerceImplicitValueType(typeTerm TypeTerm, value string) (interface{}, error) {
-	nt, ok := typeTerm.(NamedType)
+func coerceImplicitValueType(typeTerm schema.TypeTerm, value string) (interface{}, error) {
+	nt, ok := typeTerm.(schema.NamedType)
 	if !ok {
-		return nil, fmt.Errorf("Cannot accept implicit values for complex types [%v]", typeTerm)
+		return nil, fmt.Errorf("cannot accept implicit values for complex types [%v]", typeTerm)
 	}
 
 	switch nt.GetName() {
@@ -564,22 +564,22 @@ func coerceImplicitValueType(typeTerm TypeTerm, value string) (interface{}, erro
 		} else if value == "false" {
 			return false, nil
 		} else {
-			return nil, fmt.Errorf("Could not convert implicit value [%s] in struct field representation to Bool", value)
+			return nil, fmt.Errorf("could not convert implicit value [%s] in struct field representation to Bool", value)
 		}
 	case "Int":
 		i, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("Could not convert implicit value [%s] in struct field representation to Int", value)
+			return nil, fmt.Errorf("could not convert implicit value [%s] in struct field representation to Int", value)
 		}
 		return i, nil
 	case "String":
 		return value, nil
 	}
 
-	return nil, fmt.Errorf("Could not convert implicit value struct field representation to correct type [%v]", typeTerm)
+	return nil, fmt.Errorf("could not convert implicit value struct field representation to correct type [%v]", typeTerm)
 }
 
-func parseTypeTerm(name string, toks []string) (Type, error) {
+func parseTypeTerm(name string, toks []string) (schema.Type, error) {
 	if len(toks) == 0 {
 		return nil, fmt.Errorf("no tokens for type term")
 	}
@@ -604,7 +604,7 @@ func parseTypeTerm(name string, toks []string) (Type, error) {
 		return parseMapTypeTerm(name, toks)
 	default:
 		if len(toks) == 1 {
-			return NewNamedType(toks[0]), nil
+			return schema.NewNamedType(toks[0]), nil
 		}
 		// TODO: better error
 		fmt.Println("failed to parse token: ", toks[0])
@@ -614,7 +614,7 @@ func parseTypeTerm(name string, toks []string) (Type, error) {
 	}
 }
 
-func parseMapType(name string, toks []string, s *bufio.Scanner) (*TypeMap, error) {
+func parseMapType(name string, toks []string, s *bufio.Scanner) (*schema.TypeMap, error) {
 	end := len(toks)
 	if end >= 8 && toks[7] == "representation" {
 		end = 7
@@ -639,25 +639,25 @@ func parseMapType(name string, toks []string, s *bufio.Scanner) (*TypeMap, error
 			if len(toks) > end+2 {
 				return nil, fmt.Errorf("extraneous tokens found after map 'map' representation declaration")
 			}
-			mt.Representation = &MapRepresentation{Map: &MapRepresentation_Map{}}
+			mt.Representation = &schema.MapRepresentation{Map: &schema.MapRepresentation_Map{}}
 		case "stringpairs":
 			innerDelim, entryDelim, err := parseStringPairsRepresentation(s)
 			if err != nil {
 				return nil, err
 			}
-			repr := &Representation_StringPairs{InnerDelim: innerDelim, EntryDelim: entryDelim}
-			mt.Representation = &MapRepresentation{StringPairs: repr}
+			repr := &schema.Representation_StringPairs{InnerDelim: innerDelim, EntryDelim: entryDelim}
+			mt.Representation = &schema.MapRepresentation{StringPairs: repr}
 		case "listpairs":
 			if len(toks) > end+2 {
 				return nil, fmt.Errorf("extraneous tokens found after map 'listpairs' representation declaration")
 			}
-			mt.Representation = &MapRepresentation{ListPairs: &Representation_ListPairs{}}
+			mt.Representation = &schema.MapRepresentation{ListPairs: &schema.Representation_ListPairs{}}
 		case "advanced":
 			if len(toks) != end+3 {
 				return nil, fmt.Errorf("malformed map 'advanced' representation declaration")
 			}
-			adlName := AdvancedDataLayoutName(toks[end+2])
-			mt.Representation = &MapRepresentation{Advanced: &adlName}
+			adlName := schema.AdvancedDataLayoutName(toks[end+2])
+			mt.Representation = &schema.MapRepresentation{Advanced: &adlName}
 		default:
 			return nil, fmt.Errorf("unknown map 'representation' type [%v]", reprType)
 		}
@@ -666,7 +666,7 @@ func parseMapType(name string, toks []string, s *bufio.Scanner) (*TypeMap, error
 	return mt, nil
 }
 
-func parseMapTypeTerm(name string, toks []string) (*TypeMap, error) {
+func parseMapTypeTerm(name string, toks []string) (*schema.TypeMap, error) {
 	if len(toks) < 5 {
 		// not a great error message, should more clearly tell user
 		// what is actually missing
@@ -694,11 +694,11 @@ func parseMapTypeTerm(name string, toks []string) (*TypeMap, error) {
 		return nil, err
 	}
 
-	tm := NewTypeMap(name, keyType, valueType, nullable, nil)
+	tm := schema.NewTypeMap(name, keyType, valueType, nullable, nil)
 	return &tm, nil
 }
 
-func parseListType(name string, toks []string, s *bufio.Scanner) (*TypeList, error) {
+func parseListType(name string, toks []string, s *bufio.Scanner) (*schema.TypeList, error) {
 	end := len(toks)
 	if end >= 6 && toks[5] == "representation" {
 		end = 5
@@ -722,8 +722,8 @@ func parseListType(name string, toks []string, s *bufio.Scanner) (*TypeList, err
 			if len(toks) != end+3 {
 				return nil, fmt.Errorf("malformed map 'advanced' representation declaration")
 			}
-			adlName := AdvancedDataLayoutName(toks[end+2])
-			lt.Representation = &ListRepresentation{Advanced: &adlName}
+			adlName := schema.AdvancedDataLayoutName(toks[end+2])
+			lt.Representation = &schema.ListRepresentation{Advanced: &adlName}
 		} else {
 			return nil, fmt.Errorf("unknown map 'representation' type [%v]", reprType)
 		}
@@ -732,7 +732,7 @@ func parseListType(name string, toks []string, s *bufio.Scanner) (*TypeList, err
 	return lt, nil
 }
 
-func parseListTypeTerm(name string, toks []string) (*TypeList, error) {
+func parseListTypeTerm(name string, toks []string) (*schema.TypeList, error) {
 	toks = toks[1:]
 
 	last := toks[len(toks)-1]
@@ -752,14 +752,14 @@ func parseListTypeTerm(name string, toks []string) (*TypeList, error) {
 		return nil, err
 	}
 
-	tl := NewTypeList(name, subtype, nullable, nil)
+	tl := schema.NewTypeList(name, subtype, nullable, nil)
 	return &tl, nil
 }
 
-func tokenToLink(name string, tok string) *TypeLink {
-	linkType := NewNamedType(tok[1:])
+func tokenToLink(name string, tok string) *schema.TypeLink {
+	linkType := schema.NewNamedType(tok[1:])
 
-	tl := NewTypeLink(name, linkType)
+	tl := schema.NewTypeLink(name, linkType)
 	return &tl
 }
 
@@ -886,7 +886,7 @@ func parseFieldOrder(toks []string) ([]string, error) {
 	return strings.Split(strings.Join(toks[2:len(toks)-1], ""), ","), nil
 }
 
-func parseStructRepr(line []string, s *bufio.Scanner, maprep *StructRepresentation_Map) (*StructRepresentation, error) {
+func parseStructRepr(line []string, s *bufio.Scanner, maprep *schema.StructRepresentation_Map) (*schema.StructRepresentation, error) {
 	if len(line) < 3 {
 		return nil, fmt.Errorf("no representation kind given")
 	}
@@ -902,9 +902,9 @@ func parseStructRepr(line []string, s *bufio.Scanner, maprep *StructRepresentati
 		if len(line) > 3 {
 			return nil, fmt.Errorf("unexpected tokens after 'representation map'")
 		}
-		return &StructRepresentation{Map: maprep}, nil
+		return &schema.StructRepresentation{Map: maprep}, nil
 	case "tuple":
-		repr := &StructRepresentation_Tuple{}
+		repr := &schema.StructRepresentation_Tuple{}
 		if len(line) > 3 {
 			fieldOrder, err := parseTupleRepresentation(s)
 			if err != nil {
@@ -913,36 +913,36 @@ func parseStructRepr(line []string, s *bufio.Scanner, maprep *StructRepresentati
 			repr.FieldOrder = fieldOrder
 			// TODO: check fields in fieldOrder are in the list of struct fields
 		}
-		return &StructRepresentation{Tuple: repr}, nil
+		return &schema.StructRepresentation{Tuple: repr}, nil
 	case "stringpairs":
 		innerDelim, entryDelim, err := parseStringPairsRepresentation(s)
 		if err != nil {
 			return nil, err
 		}
-		repr := &Representation_StringPairs{InnerDelim: innerDelim, EntryDelim: entryDelim}
-		return &StructRepresentation{StringPairs: repr}, nil
+		repr := &schema.Representation_StringPairs{InnerDelim: innerDelim, EntryDelim: entryDelim}
+		return &schema.StructRepresentation{StringPairs: repr}, nil
 	case "stringjoin":
 		join, fieldOrder, err := parseStringJoinRepresentation(s)
 		if err != nil {
 			return nil, err
 		}
-		repr := StructRepresentation_StringJoin{Join: join}
+		repr := schema.StructRepresentation_StringJoin{Join: join}
 		if len(fieldOrder) > 0 {
 			repr.FieldOrder = fieldOrder
 		}
-		return &StructRepresentation{StringJoin: &repr}, nil
+		return &schema.StructRepresentation{StringJoin: &repr}, nil
 	case "listpairs":
 		if len(line) > 3 {
 			return nil, fmt.Errorf("unexpected tokens after 'representation listpairs'")
 		}
-		return &StructRepresentation{ListPairs: &Representation_ListPairs{}}, nil
+		return &schema.StructRepresentation{ListPairs: &schema.Representation_ListPairs{}}, nil
 	default:
 		return nil, fmt.Errorf("unrecognized struct representation: %s", reprkind)
 	}
 }
 
-func ParseSchema(s *bufio.Scanner) (*Schema, error) {
-	schema := &Schema{TypesList: &TypesList{}}
+func ParseSchema(s *bufio.Scanner) (*schema.Schema, error) {
+	schemaDMT := &schema.Schema{TypesList: &schema.TypesList{}}
 
 	for s.Scan() {
 		toks := tokens(s.Text())
@@ -959,7 +959,7 @@ func ParseSchema(s *bufio.Scanner) (*Schema, error) {
 				fmt.Printf("%q\n", toks)
 				return nil, err
 			}
-			schema.TypesList.Append(t)
+			schemaDMT.TypesList.Append(t)
 		case "advanced":
 			if len(toks) == 1 {
 				return nil, fmt.Errorf("'advanced' declaration requires a name token")
@@ -967,13 +967,13 @@ func ParseSchema(s *bufio.Scanner) (*Schema, error) {
 			if len(toks) != 2 {
 				return nil, fmt.Errorf("extraneous tokens after 'advanced' declaration")
 			}
-			if schema.AdvancedList == nil {
-				schema.AdvancedList = &AdvancedList{}
+			if schemaDMT.AdvancedList == nil {
+				schemaDMT.AdvancedList = &schema.AdvancedList{}
 			}
-			schema.AdvancedList.Append(NewAdvanced(toks[1]))
+			schemaDMT.AdvancedList.Append(schema.NewAdvanced(toks[1]))
 		default:
 			return nil, fmt.Errorf("unexpected token: %q", toks[0])
 		}
 	}
-	return schema, nil
+	return schemaDMT, nil
 }
