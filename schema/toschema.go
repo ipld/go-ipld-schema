@@ -7,6 +7,9 @@ import (
 )
 
 func PrintSchema(sch *Schema, w io.Writer) error {
+	if sch == nil {
+		return fmt.Errorf("can't print a nil schema")
+	}
 	if sch.AdvancedList != nil {
 		for _, a := range sch.AdvancedList.AsList() {
 			fmt.Fprintf(w, "advanced %s\n\n", a.GetName())
@@ -198,6 +201,13 @@ func (t *TypeUnion) TypeDecl() string {
 
 			term += fmt.Sprintf("} representation inline {\n\tdiscriminantKey \"%s\"\n}",
 				t.Representation.Inline.DiscriminantKey)
+		} else if t.Representation.StringPrefix != nil {
+			for _, k := range t.Representation.StringPrefix.KeyList() {
+				v, _ := t.Representation.StringPrefix.GetMapping(k)
+				term += fmt.Sprintf("\t| %s \"%s\"\n", TypeTermDecl(v), k)
+			}
+
+			term += "} representation stringprefix"
 		} else if t.Representation.BytesPrefix != nil {
 			for _, k := range t.Representation.BytesPrefix.KeyList() {
 				v, _ := t.Representation.BytesPrefix.GetMapping(k)

@@ -62,6 +62,9 @@ func verifyFixture(t *testing.T, name string) {
 	var out bytes.Buffer
 	err = schema.PrintSchema(parsedSchema, &out)
 	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
 	regenerated := strings.ReplaceAll(out.String(), "\t", "  ")
 	regenerated = regenerated[0 : len(regenerated)-1]
 

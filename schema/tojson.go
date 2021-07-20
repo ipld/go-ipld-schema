@@ -134,6 +134,10 @@ func (t UnionRepresentation_Kinded) MarshalJSON() ([]byte, error) {
 	return mappingListToMapMarshalJSON(t.mappings, "Kind", "Typ")
 }
 
+func (t UnionRepresentation_StringPrefix) MarshalJSON() ([]byte, error) {
+	return mappingListToMapMarshalJSON(t.mappings, "Byts", "Typ")
+}
+
 func (t UnionRepresentation_BytesPrefix) MarshalJSON() ([]byte, error) {
 	return mappingListToMapMarshalJSON(t.mappings, "Byts", "Typ")
 }

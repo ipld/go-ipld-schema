@@ -235,6 +235,7 @@ func parseUnion(name string, s *bufio.Scanner) (*schema.TypeUnion, error) {
 		key string
 		typ schema.Type
 	}
+	// TODO: check for unique keys/kinds/etc.
 	unionVals := make([]unionVal, 0)
 	for s.Scan() {
 		toks := tokens(s.Text())
@@ -327,6 +328,18 @@ func parseUnion(name string, s *bufio.Scanner) (*schema.TypeUnion, error) {
 				}
 
 				repr := &schema.UnionRepresentation{BytesPrefix: &rep}
+				tu := schema.NewTypeUnion(name, repr)
+				return &tu, nil
+			case "stringprefix":
+				rep := schema.UnionRepresentation_StringPrefix{}
+				for _, k := range unionVals {
+					if k.key == "" {
+						return nil, fmt.Errorf("'stringprefix' union representation may not use empty strings (%v)", k.typ)
+					}
+					rep.AddMapping(k.typ, k.key)
+				}
+
+				repr := &schema.UnionRepresentation{StringPrefix: &rep}
 				tu := schema.NewTypeUnion(name, repr)
 				return &tu, nil
 			default:
