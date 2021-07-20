@@ -316,11 +316,12 @@ func NewTypeUnion(name string, representation *UnionRepresentation) TypeUnion {
 }
 
 type UnionRepresentation struct {
-	Keyed       *UnionRepresentation_Keyed       `json:"keyed,omitempty"`
-	Kinded      *UnionRepresentation_Kinded      `json:"kinded,omitempty"`
-	Envelope    *UnionRepresentation_Envelope    `json:"envelope,omitempty"`
-	Inline      *UnionRepresentation_Inline      `json:"inline,omitempty"`
-	BytesPrefix *UnionRepresentation_BytesPrefix `json:"bytesprefix,omitempty"`
+	Keyed        *UnionRepresentation_Keyed        `json:"keyed,omitempty"`
+	Kinded       *UnionRepresentation_Kinded       `json:"kinded,omitempty"`
+	Envelope     *UnionRepresentation_Envelope     `json:"envelope,omitempty"`
+	Inline       *UnionRepresentation_Inline       `json:"inline,omitempty"`
+	StringPrefix *UnionRepresentation_StringPrefix `json:"stringprefix,omitempty"`
+	BytesPrefix  *UnionRepresentation_BytesPrefix  `json:"bytesprefix,omitempty"`
 }
 
 type UnionRepresentation_Keyed struct {
@@ -383,6 +384,44 @@ func (urk UnionRepresentation_Kinded) KindList() []RepresentationKind {
 type unionRepresentation_KindedMapping struct {
 	Kind RepresentationKind
 	Typ  Type
+}
+
+type UnionRepresentation_StringPrefix struct {
+	mappings []unionRepresentation_StringPrefixMapping
+}
+
+func (urb *UnionRepresentation_StringPrefix) AddMapping(typ Type, byts string) {
+	urb.mappings = append(urb.mappings, unionRepresentation_StringPrefixMapping{typ, byts})
+}
+
+func (urb UnionRepresentation_StringPrefix) GetMapping(byts string) (Type, bool) {
+	for _, k := range urb.mappings {
+		if k.Byts == byts {
+			return k.Typ, true
+		}
+	}
+	return nil, false
+}
+
+func (urb UnionRepresentation_StringPrefix) KeyList() []string {
+	bl := make([]string, len(urb.mappings))
+	for i, d := range urb.mappings {
+		bl[i] = d.Byts
+	}
+	return bl
+}
+
+func (urb UnionRepresentation_StringPrefix) TypeList() []Type {
+	tl := make([]Type, len(urb.mappings))
+	for i, d := range urb.mappings {
+		tl[i] = d.Typ
+	}
+	return tl
+}
+
+type unionRepresentation_StringPrefixMapping struct {
+	Typ  Type
+	Byts string
 }
 
 type UnionRepresentation_BytesPrefix struct {
