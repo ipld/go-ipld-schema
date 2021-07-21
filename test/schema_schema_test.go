@@ -21,7 +21,7 @@ func TestSchemaSchema(t *testing.T) {
 		assert.Equal(t, typ, actualParsed[name], name)
 	}
 
-	assert.Equal(t, strings.TrimSpace(expectedString), actualString)
+	assert.Equal(t, strings.ReplaceAll(strings.TrimSpace(expectedString), "\r", ""), actualString)
 }
 
 func loadExpected(t *testing.T) (string, map[string]interface{}) {
